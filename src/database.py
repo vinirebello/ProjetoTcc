@@ -1,69 +1,67 @@
-import sqlite3
+import pymongo
+from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure
+from datetime import datetime
 
-DATABASE_FILE = 'database/project.db'
+MONGO_URI = 'mongodb+srv://vrebello21_db_user:kzQgcaZNiAlcwfNv@cluster.t7vznud.mongodb.net/'
+DATABASE_NAME = "ProjetcDatabase"
+COLLECTION_NAME = "data"
 
 def connect_db():
-    """Cria e retorna uma conexão com o banco de dados."""
-    return sqlite3.connect(DATABASE_FILE)
+    
+    try:
+        con = MongoClient(MONGO_URI)
+        con.admin.command('ping') 
+        print("Conectado ao MongoDB com sucesso!")
+        db = con.get_database(DATABASE_NAME)
+        return db
+    except ConnectionFailure as e:
+        print(f"Erro ao conectar ao MongoDB: {e}")
+        return None
 
-def setup_database():
-    """Cria a tabela 'drawings' se ela não existir."""
-    conn = connect_db()
-    cursor = conn.cursor()
+def insert_drawing_record():
     
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS drawings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT NOT NULL,
-            file_path TEXT NOT NULL,
-            upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT NOT NULL,
-            gcode_path TEXT
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+    db = connect_db()
 
-def insert_drawing_record(file_name, file_path, status="pending"):
-    """Insere um novo registro de desenho no banco de dados."""
-    conn = connect_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO drawings (file_name, file_path, status)
-        VALUES (?, ?, ?)
-    ''', (file_name, file_path, status))
-    
-    conn.commit()
-    conn.close()
-    
-    print(f"Registro de '{file_name}' inserido com sucesso!")
-
-def update_drawing_status(file_name, new_status, gcode_path=None):
-    """Atualiza o status e, opcionalmente, o caminho do G-code."""
-    conn = connect_db()
-    cursor = conn.cursor()
-
-    if gcode_path:
-        cursor.execute('''
-            UPDATE drawings
-            SET status = ?, gcode_path = ?
-            WHERE file_name = ?
-        ''', (new_status, gcode_path, file_name))
+    if db is not None:
+        collection = db.get_collection(COLLECTION_NAME)
+        drawing_record = {
+            # "file_name": file_name,
+            # "file_path": file_path,
+            "upload_date": datetime.now(),
+            "status": "pending",
+            # "gcode_path": None
+        }
+        result = collection.insert_one(drawing_record)
+        print(f"Registro de dado inserido com o ID: {result.inserted_id}")
+        return result.inserted_id
     else:
-        cursor.execute('''
-            UPDATE drawings
-            SET status = ?
-            WHERE file_name = ?
-        ''', (new_status, file_name))
+        print("Erro ao inserir dados no banco")
     
-    conn.commit()
-    conn.close()
-    
-    print(f"Status de '{file_name}' atualizado para '{new_status}'.")
+def update_drawing_status(file_id, new_status, gcode_path=None):
+    """Atualiza o status e, opcionalmente, o caminho do G-code de um registro."""
+    db = connect_db()
+    if db is not None:
+        collection = db.get_collection(COLLECTION_NAME)
+        update_data = {"status": new_status}
+        if gcode_path:
+            update_data["gcode_path"] = gcode_path
+            
+        from bson.objectid import ObjectId
+        
+        result = collection.update_one(
+            {"_id": ObjectId(file_id)},
+            {"$set": update_data}
+        )
+        if result.modified_count > 0:
+            print(f"Status do registro {file_id} atualizado para '{new_status}'.")
+        else:
+            print(f"Nenhum registro encontrado com o ID {file_id}.")
 
-# Para testar a criação da tabela
-if __name__ == "__main__":
-    setup_database()
-    print("Banco de dados configurado com sucesso!")
+def get_all_drawings():
+    """Retorna todos os registros de desenhos da coleção."""
+    db = connect_db()
+    if db:
+        collection = db[COLLECTION_NAME]
+        return list(collection.find({}))
+    return []
