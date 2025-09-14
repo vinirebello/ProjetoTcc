@@ -15,7 +15,6 @@ def loadFile():
     if not filePath:
         return
     
-
 frameButtom = tk.Frame(window)
 frameButtom.pack(pady=10)
 
@@ -30,6 +29,5 @@ loadButtom.pack(side=tk.LEFT, padx=10)
 
 textArea= scrolledtext.ScrolledText(window, wrap=tk.WORD, width=90, height=30, font=("Courier New", 10))
 textArea.pack(pady=10)
-
 
 window.mainloop()
