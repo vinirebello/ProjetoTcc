@@ -1,38 +1,124 @@
-.App {
+/* Estilo geral da página */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #f0f2f5;
+  margin: 0;
+  padding: 20px;
+}
+
+/* Container principal */
+.container {
+  max-width: 1000px;
+  margin: 40px auto;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+/* Header com o título */
+.header {
   text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
+  padding: 25px;
+  background-color: #007bff;
   color: white;
 }
 
-.App-link {
-  color: #61dafb;
+.header h1 {
+  margin: 0;
+  font-size: 2.2rem;
+  font-weight: 600;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* Conteúdo principal (layout de 2 colunas) */
+.content {
+  display: flex;
+  flex-direction: row; /* Itens lado a lado */
+  gap: 20px;
+  padding: 30px;
+  align-items: flex-start; /* Alinha o topo das colunas */
+}
+
+/* --- NOVO: Coluna da Esquerda --- */
+/* Agrupa o botão e o formulário de parâmetros */
+.left-column {
+  display: flex;
+  flex-direction: column; /* Botão em cima, formulário embaixo */
+  gap: 20px;
+  width: 320px; /* Largura fixa para a coluna de controles */
+}
+
+/* Estilo do botão de upload */
+.upload-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 15px 30px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  width: 100%; /* Faz o botão ocupar a largura da coluna */
+}
+
+.upload-button:hover {
+  background-color: #0056b3;
+}
+
+/* --- NOVO: Estilos do Formulário de Parâmetros --- */
+.parameters-form {
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+}
+
+.parameters-form h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  text-align: center;
+  color: #333;
+  font-weight: 600;
+}
+
+.form-group {
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #ccd0d5;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  box-sizing: border-box; /* Garante que padding não estoure a largura */
+  background-color: #fff;
+}
+/* --- Fim dos novos estilos --- */
+
+
+/* Estilo da caixa de texto (textarea) */
+.gcode-textarea {
+  flex: 1; /* Faz a caixa de texto ocupar todo o espaço restante */
+  height: 550px; /* Aumentei a altura para compensar o formulário */
+  border: 1px solid #ccd0d5;
+  border-radius: 5px;
+  padding: 15px;
+  font-family: 'Courier New', Courier, monospace; 
+  font-size: 0.9rem;
+  background-color: #fdfdfd;
+  resize: vertical;
+  line-height: 1.5;
 }
