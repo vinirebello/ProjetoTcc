@@ -3,7 +3,7 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from datetime import datetime
 
-MONGO_URI = 'mongodb+srv://vrebello21_db_user:kzQgcaZNiAlcwfNv@cluster.t7vznud.mongodb.net/'
+MONGO_URI = "mongodb+srv://vrebello21_db_user:kzQgcaZNiAlcwfNv@cluster.t7vznud.mongodb.net/"
 DATABASE_NAME = "ProjetcDatabase"
 COLLECTION_NAME = "data"
 
