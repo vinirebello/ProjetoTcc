@@ -6,6 +6,7 @@ function App() {
   const [gCode, setGCode] = useState('');
   
   // --- NOVOS ESTADOS PARA OS PARÂMETROS ---
+  const[selectedFile, setSelectedFile] = useState(null)
   const [units, setUnits] = useState('G21'); // G21 = mm, G20 = polegadas
   const [spindleSpeed, setSpindleSpeed] = useState(1200); // RPM
   const [feedRate, setFeedRate] = useState(500); // Avanço (mm/min)
@@ -16,38 +17,76 @@ function App() {
   const fileInputRef = useRef(null);
 
   // Função chamada quando um arquivo é selecionado
-  const handleFileChange = (event) => {
-    const file = event.target.files[0];
+  const handleCreateButton = async () => { // <--- Tornou-se async
+    const file = selectedFile;
     if (!file) {
+      setGCode("(ERRO: Por favor, escolha um arquivo de imagem primeiro.)");
       return;
     }
 
-    console.log("Arquivo selecionado:", file.name);
+    console.log("Enviando para o backend:", file.name);
     console.log("Parâmetros:", { units, spindleSpeed, feedRate, safetyZ, cutDepth });
 
-    // --- SIMULAÇÃO USANDO OS PARÂMETROS DO ESTADO ---
-    // No seu TCC, você enviaria esses parâmetros junto com a imagem
-    // para o seu backend Python.
-    const simulatedGCode = `(Código G-code gerado para: ${file.name})
-${units} ; Define unidades (${units === 'G21' ? 'milímetros' : 'polegadas'})
-G90 ; Define modo de coordenada absoluta
-M03 S${spindleSpeed} ; Liga o spindle a ${spindleSpeed} RPM
-G00 Z${safetyZ} ; Move rápido para a altura de segurança
-G00 X10 Y10 ; Move para o ponto inicial (X:10, Y:10)
-G01 Z${cutDepth} F${feedRate / 2} ; Mergulha no material (avanço de mergulho mais lento)
-G01 X50 Y10 F${feedRate} ; Corta uma linha reta com avanço ${feedRate}
-G01 X50 Y50
-G01 X10 Y50
-G01 X10 Y10
-G00 Z${safetyZ} ; Retrai a ferramenta
-M05 ; Desliga o spindle
-M30 ; Fim do programa`;
+    // 1. Criar um FormData para enviar arquivo + campos
+    const formData = new FormData();
+    formData.append('file', file); // A chave 'file' deve ser a mesma do FastAPI
     
-    setGCode(simulatedGCode);
+    // Adiciona os parâmetros. As chaves devem ser as mesmas do FastAPI
+    formData.append('units', units);
+    formData.append('spindleSpeed', spindleSpeed);
+    formData.append('feedRate', feedRate);
+    formData.append('safetyZ', safetyZ);
+    formData.append('cutDepth', cutDepth);
+
+    // Limpa o G-code antigo e mostra um 'loading'
+    setGCode("(Processando imagem com OpenCV e gerando G-code...)");
+
+    try {
+      // 2. Fazer a chamada de API para o backend
+      const response = await fetch('http://localhost:8000/api/generate-gcode', {
+        method: 'POST',
+        body: formData,
+        // Não defina 'Content-Type', o browser faz isso
+        // automaticamente para FormData (incluindo o 'boundary')
+      });
+
+      // 3. Lidar com a resposta
+      if (!response.ok) {
+        // Se a resposta não foi OK, leia a mensagem de erro como TEXTO
+        const errorText = await response.text();
+        
+        // Tenta fazer o parse do erro (FastAPI envia JSON para erros)
+        try {
+           const errorJson = JSON.parse(errorText);
+           setGCode(`(ERRO DO BACKEND: ${errorJson.detail || errorText})`);
+        } catch (e) {
+           // Se não for JSON, mostre o texto do erro
+           setGCode(`(ERRO DO BACKEND: ${errorText})`);
+        }
+
+      } else {
+        // Sucesso! A resposta é JSON (uma string JSON)
+        // Usar response.json() faz o parse automático da string JSON
+        // para uma string JavaScript, que o textarea entende.
+        const gcodeString = await response.json(); 
+        setGCode(gcodeString);
+      }
+
+    } catch (error) {
+      console.error("Erro ao conectar com o backend:", error);
+      setGCode(`(ERRO DE CONEXÃO: Não foi possível conectar ao backend em http://localhost:8000. Você iniciou o servidor Python?)`);
+    }
   };
 
-  // Função para acionar o clique no input de arquivo
-  const handleButtonClick = () => {
+  const handleFileSelected = (event) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      setSelectedFile(file);
+      console.log("Arquivo armazenado:", file.name);
+    }
+  };
+
+  const handleUploadButtonClick = () => {
     fileInputRef.current.click();
   };
 
@@ -59,19 +98,22 @@ M30 ; Fim do programa`;
       
       <main className="content">
         
-        {/* Coluna da Esquerda: Botão + Formulário */}
         <div className="left-column">
           
-          {/* Botão de Upload */}
-          <button className="upload-button" onClick={handleButtonClick}>
+          <button className="upload-button" onClick={handleUploadButtonClick}>
             Escolher Imagem (PNG/JPG)
           </button>
+          
+          {selectedFile && (
+            <span className="file-name-display">
+              Arquivo: {selectedFile.name}
+            </span>
+          )}
 
-          {/* Input de arquivo real escondido */}
           <input
             type="file"
             ref={fileInputRef}
-            onChange={handleFileChange}
+            onChange={handleFileSelected}
             accept=".png, .jpeg, .jpg"
             style={{ display: 'none' }} 
           />
@@ -108,7 +150,10 @@ M30 ; Fim do programa`;
               <input type="number" step="0.1" value={cutDepth} onChange={e => setCutDepth(e.target.value)} />
             </div>
           </div>
-          {/* --- FIM DA NOVA ÁREA --- */}
+
+          <button className="create-button" onClick={handleCreateButton}> 
+              Gerar código
+          </button>
 
         </div>
 
