@@ -1,72 +1,104 @@
 import cv2
 import numpy as np
 import uvicorn
+import pytesseract
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from app.db.database import registerDatabase
 import io
 
-# --- 1. Configuração do App FastAPI ---
 app = FastAPI()
 
-# Configura o CORS para permitir que o seu frontend React (ex: localhost:3000)
-# se comunique com o seu backend (ex: localhost:8000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Em produção, mude para ["http://localhost:3000"]
+    allow_origins=["http://localhost:3000"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- 2. Lógica de Visão Computacional (OpenCV) ---
-# (Como discutido anteriormente)
-def process_image_to_vertices(image_bytes: bytes):
+
+
+def extractVertices(image_bytes: bytes):
     """
     Lê uma imagem, encontra o contorno principal e simplifica
     para uma lista de vértices.
     """
     try:
-        # Converte os bytes da imagem em um array numpy
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        # Decodifica a imagem em escala de cinza
+        
+        nparr = np.frombuffer(image_bytes, np.uint8)  
         img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         
         if img is None:
             raise ValueError("Não foi possível decodificar a imagem.")
         
-        # Binarização (Thresholding)
-        # Assume peça clara (branco) em fundo escuro (preto)
         _ , thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
         
     except Exception as e:
         print(f"Erro no pré-processamento: {e}")
         return None
 
-    # Detecção de Contorno
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     if not contours:
         return None
 
     main_contour = max(contours, key=cv2.contourArea)
-
-    # Simplificação do Contorno (Algoritmo Ramer-Douglas-Peucker)
     epsilon = 0.01 * cv2.arcLength(main_contour, True)
     approx_vertices = cv2.approxPolyDP(main_contour, epsilon, True)
 
     vertices_list = []
     img_height = img.shape[0]
     for point in approx_vertices:
-        x, y = point[0]
-        # Invertendo Y, pois CV e CNC têm eixos Y opostos
+        
+        x, y = point[0]  
         y_cnc = img_height - y 
-        # ASSUMINDO 1 pixel = 1 mm (ou unidade)
         vertices_list.append({"x": float(x), "y": float(y_cnc)})
     
     return vertices_list
 
-# --- 3. Lógica de Geração de G-code ---
-def generate_gcode_from_vertices(vertices: list, params: dict):
+def extract_measurements(image_bytes: bytes):
+    """
+    Lê uma imagem, pré-processa e usa OCR para extrair texto (medidas).
+    """
+    try:
+        # 1. Decodificação e Conversão
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img_original = cv2.imdecode(nparr, cv2.IMREAD_COLOR) # Use COLOR para melhor OCR
+        
+        if img_original is None:
+            raise ValueError("Não foi possível decodificar a imagem.")
+            
+        # 2. Pré-processamento para OCR
+        gray = cv2.cvtColor(img_original, cv2.COLOR_BGR2GRAY)
+        
+        # O desenho da sua imagem é preto em fundo branco. 
+        # Inverter cores pode ajudar o Tesseract a tratar o texto como preto sobre branco.
+        inverted = cv2.bitwise_not(gray) 
+        
+        # Binarização (Limiarização)
+        _, thresh = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        
+        # 3. Aplicação do OCR (Tesseract)
+        # Configuração para números (digitos) e para otimizar a leitura
+        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
+        
+        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        
+        # Extrai o texto da imagem processada
+        text = pytesseract.image_to_string(thresh, config=custom_config, lang='eng') # 'eng' geralmente funciona bem para números simples
+
+        # 4. Limpeza e Extração dos Números
+        # Remove caracteres de quebra de linha ou espaços indesejados e separa os números
+        numbers = [s.strip() for s in text.split() if s.isdigit()]
+        
+        return list(set(numbers)) # Retorna valores únicos (como "200")
+
+    except Exception as e:
+        print(f"Erro na extração de medidas: {e}")
+        return []
+
+def generateGcode(vertices: list, params: dict):
     """
     Recebe vértices e parâmetros e gera a string de G-code.
     """
@@ -111,26 +143,21 @@ def generate_gcode_from_vertices(vertices: list, params: dict):
 # --- 4. O Endpoint da API ---
 @app.post("/api/generate-gcode")
 async def create_gcode(
-    # 'File' vem do <input type="file">
-    file: UploadFile = File(...), 
     
-    # 'Form' vem dos seus inputs de formulário
+    file: UploadFile = File(...), 
     units: str = Form(...),
     spindleSpeed: int = Form(...),
     feedRate: float = Form(...),
     safetyZ: float = Form(...),
     cutDepth: float = Form(...)):
     
-    # Lê os bytes do arquivo enviado
     image_bytes = await file.read()
     
-    # 1. Processa a imagem com OpenCV
-    vertices = process_image_to_vertices(image_bytes)
+    vertices = extractVertices(image_bytes)
     
     if vertices is None:
         raise HTTPException(status_code=400, detail="Não foi possível processar a imagem. Verifique se é uma silhueta P&B.")
 
-    # 2. Coleta os parâmetros
     params = {
         "fileName": file.filename,
         "units": units,
@@ -140,12 +167,17 @@ async def create_gcode(
         "cutDepth": cutDepth
     }
 
-    # 3. Gera o G-code
-    gcode_result = generate_gcode_from_vertices(vertices, params)
+    gcode_result = generateGcode(vertices, params)
     
-    # 4. Retorna o G-code como texto puro
+    registerDatabase(params, gcode_result)
+    
     return gcode_result
 
-# --- 5. Roda o servidor ---
+@app.get("/api/healthcheck", tags=["Health"])
+def health_check():
+    """Endpoint simples para verificar se a API está rodando."""
+    # Rota de health check simples que retorna apenas a confirmação.
+    return "API Ativa!"
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
