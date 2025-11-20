@@ -1,263 +1,176 @@
 import cv2
 import numpy as np
 import pytesseract
+import typing
+import os # Usado para ler os arquivos
 
-import cv2
-import numpy as np
-import pytesseract
-from scipy.spatial import point_to_segment_distance
+# ==============================================================================
+# 1. FUNÇÕES DE GERAÇÃO DE G-CODE (Originais e Modificadas)
+# ==============================================================================
 
-# Configuração do caminho do Tesseract
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
-def analyze_complex_drawing_dimensions(image_bytes: bytes):
+def extract_measurements(image_bytes: bytes):
     """
-    Analisa um desenho 2D de peça simples (como um L), extraindo vértices,
-    cotas com localização e associando as cotas às linhas da peça.
+    Lê uma imagem, pré-processa e usa OCR para extrair texto (medidas).
+    Esta versão é usada para a 'vista de perfil' (só precisamos dos números).
     """
-    results = {
-        "vertices": [],
-        "lines": [],
-        "dimensions": []
-    }
-
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
-        img_color = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        img_gray = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
-
-        if img_color is None or img_gray is None:
+        img_original = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img_original is None:
             raise ValueError("Não foi possível decodificar a imagem.")
-
-        img_height, img_width = img_gray.shape[:2]
-
-        # --- 1. Extração do Contorno Principal e Vértices ---
-        _, thresh_contour = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY_INV) 
-        # Invertemos para ter o objeto (preto) em branco e o fundo em preto,
-        # o que ajuda o findContours a encontrar o "objeto"
-        
-        contours, _ = cv2.findContours(thresh_contour, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        if not contours:
-            return results
-
-        main_contour = max(contours, key=cv2.contourArea)
-        
-        # Simplifica o contorno para obter os vértices da forma
-        epsilon = 0.01 * cv2.arcLength(main_contour, True) # Ajuste este valor se necessário
-        approx_vertices_cv = cv2.approxPolyDP(main_contour, epsilon, True)
-        
-        # Converte vértices para formato desejado (x, y) e inverte Y para sistema CNC
-        vertices_coords = []
-        for point in approx_vertices_cv:
-            x, y = point[0]
-            y_cnc = img_height - y  # Inverte o eixo Y
-            vertices_coords.append((float(x), float(y_cnc)))
-            results["vertices"].append({"x": float(x), "y": float(y_cnc)})
-
-        # --- 2. Identificação das Linhas da Peça ---
-        # Cria segmentos de linha conectando os vértices em ordem
-        lines = []
-        for i in range(len(vertices_coords)):
-            p1 = vertices_coords[i]
-            p2 = vertices_coords[(i + 1) % len(vertices_coords)] # Conecta o último ao primeiro
             
-            # Calcula o ponto médio da linha para futura associação
-            mid_x = (p1[0] + p2[0]) / 2
-            mid_y = (p1[1] + p2[1]) / 2
+        gray = cv2.cvtColor(img_original, cv2.COLOR_BGR2GRAY)
+        
+        # Inverter cores (assumindo texto preto em fundo branco)
+        inverted = cv2.bitwise_not(gray) 
+        
+        # Binarização
+        _, thresh = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        
+        # Config Tesseract
+        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
+        
+        # !! IMPORTANTE: Configure o caminho do Tesseract aqui !!
+        # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        
+        text = pytesseract.image_to_string(thresh, config=custom_config, lang='eng')
+
+        numbers = [s.strip() for s in text.split() if s.isdigit()]
+        
+        return list(numbers)
+
+    except Exception as e:
+        print(f"Erro na extração de medidas: {e}")
+        return []
+
+def extract_dimension_data(image_bytes: bytes):
+    """
+    Extrai dados das cotas (texto e posição) usando Tesseract.
+    Usado para a 'vista de topo' para encontrar a escala.
+    """
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img_original = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img_original is None:
+            raise ValueError("Não foi possível decodificar a imagem.")
             
-            # Determina a orientação da linha
-            if abs(p1[0] - p2[0]) < 5: # Tolerância para considerar vertical (quase mesma coordenada X)
-                orientation = "vertical"
-            elif abs(p1[1] - p2[1]) < 5: # Tolerância para considerar horizontal (quase mesma coordenada Y)
-                orientation = "horizontal"
-            else:
-                orientation = "diagonal" # Linhas diagonais não são esperadas neste tipo de desenho simples
-
-            lines.append({
-                "p1": {"x": p1[0], "y": p1[1]},
-                "p2": {"x": p2[0], "y": p2[1]},
-                "midpoint": {"x": mid_x, "y": mid_y},
-                "orientation": orientation,
-                "length_px": np.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
-            })
-        results["lines"] = lines
-
-
-        # --- 3. Extração de Cotas com OCR (incluindo localização) ---
-        inverted_ocr = cv2.bitwise_not(img_gray)
-        _, thresh_ocr = cv2.threshold(inverted_ocr, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        gray = cv2.cvtColor(img_original, cv2.COLOR_BGR2GRAY)
+        inverted = cv2.bitwise_not(gray) 
+        _, thresh = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        
+        # !! IMPORTANTE: Configure o caminho do Tesseract aqui !!
+        # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
         
         custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
-        data = pytesseract.image_to_data(thresh_ocr, output_type=pytesseract.Output.DICT, config=custom_config, lang='eng')
-
-        # --- 4. Associação das Cotas às Linhas ---
+        
+        # Mude para image_to_data e peça um dicionário (Output.DICT)
+        data = pytesseract.image_to_data(thresh, config=custom_config, lang='eng', output_type=pytesseract.Output.DICT)
+        
+        extracted_data = []
         for i in range(len(data['text'])):
-            text_value = data['text'][i].strip()
-            
-            # Filtra para manter apenas números com boa confiança
-            if text_value.isdigit() and int(data['conf'][i]) > 70: # Aumenta a confiança para ser mais seletivo
-                x_text, y_text, w_text, h_text = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
-                
-                # Centro da caixa de texto (em coordenadas de imagem, não CNC)
-                cx_text = x_text + w_text / 2
-                cy_text = y_text + h_text / 2
-                
-                # Determina a orientação aproximada da cota (horizontal ou vertical)
-                # Assume que a cota é horizontal se a largura da caixa de texto for maior que a altura
-                # E vertical se a altura for maior que a largura
-                if w_text > h_text * 1.5: # Cota horizontal
-                    cota_orientation = "horizontal"
-                elif h_text > w_text * 1.5: # Cota vertical
-                    cota_orientation = "vertical"
-                else:
-                    continue # Ignora cotas com proporções ambíguas (pode ser ruído)
-                
-                min_distance = float('inf')
-                associated_line_index = -1
-                
-                # Itera sobre as linhas da peça para encontrar a mais próxima e com a mesma orientação
-                for j, line in enumerate(lines):
-                    if line["orientation"] == cota_orientation:
-                        # Ponto da cota para cálculo de distância
-                        # Para cotas horizontais, usamos o centro X e Y da caixa de texto.
-                        # Para cotas verticais, usamos o centro X e Y da caixa de texto.
-                        # As linhas estão em coordenadas CNC (Y invertido), então precisamos converter cy_text
-                        
-                        # Converte cy_text para coordenadas CNC para comparação
-                        cy_text_cnc = img_height - cy_text
-                        
-                        # Pontos da linha (em coordenadas CNC)
-                        p1_line_cnc = (line["p1"]["x"], line["p1"]["y"])
-                        p2_line_cnc = (line["p2"]["x"], line["p2"]["y"])
-                        
-                        # Calcula a distância do centro da cota (ponto) ao segmento de linha
-                        # from scipy.spatial.distance.point_to_segment_distance
-                        # Requer que os pontos sejam arrays numpy
-                        distance = point_to_segment_distance(
-                            np.array([cx_text, cy_text_cnc]),
-                            np.array([p1_line_cnc[0], p1_line_cnc[1]]),
-                            np.array([p2_line_cnc[0], p2_line_cnc[1]])
-                        )
-                        
-                        # Verifica se a cota está "do lado de fora" da peça em relação à linha
-                        # Isso é um pouco mais complexo e pode exigir um cálculo de vetor normal ou
-                        # uma verificação de posição relativa. Para simplificar, assumimos que 
-                        # as cotas geralmente estão fora da peça.
-
-                        if distance < min_distance:
-                            min_distance = distance
-                            associated_line_index = j
-                
-                # Se uma linha foi associada e a distância é razoável
-                if associated_line_index != -1 and min_distance < 80: # 80 pixels de tolerância
-                    associated_line = lines[associated_line_index]
-                    results["dimensions"].append({
-                        "value": text_value,
-                        "associated_line_index": associated_line_index,
-                        "associated_line": {
-                            "p1": associated_line["p1"],
-                            "p2": associated_line["p2"],
-                            "orientation": associated_line["orientation"],
-                            "length_px_approx": associated_line["length_px"] # Comprimento aproximado em pixels
-                        },
-                        "position_box_img_coords": {"x": x_text, "y": y_text, "w": w_text, "h": h_text},
-                        "distance_to_line_px": min_distance
-                    })
+            if int(data['conf'][i]) > 70 and data['text'][i].isdigit():
+                extracted_data.append({
+                    "text": data['text'][i],
+                    "left": data['left'][i],
+                    "top": data['top'][i],
+                    "width": data['width'][i],
+                    "height": data['height'][i]
+                })
+        return extracted_data
 
     except Exception as e:
-        print(f"Erro na análise do desenho: {e}")
-        return None
-        
-    return results
+        print(f"Erro na extração de dados de medidas: {e}")
+        return []
 
-# --- Exemplo de Uso (adaptado para a nova imagem) ---
-if __name__ == "__main__":
-    # Carregue a imagem (certifique-se de que o nome do arquivo está correto)
-    # Por exemplo, se você salvou a imagem como 'peca_em_l.png'
-    try:
-        with open('peca_em_l.png', 'rb') as f:
-            image_data_l_shape = f.read()
-        
-        analysis_results = analyze_complex_drawing_dimensions(image_data_l_shape)
-        
-        if analysis_results:
-            print("\n--- RESULTADOS DA ANÁLISE DO DESENHO ---")
-            
-            print("\nVértices da Peça (CNC/Invertido Y):")
-            for i, v in enumerate(analysis_results["vertices"]):
-                print(f"  Vértice {i}: ({v['x']:.2f}, {v['y']:.2f})")
-                
-            print("\nLinhas da Peça:")
-            for i, line in enumerate(analysis_results["lines"]):
-                print(f"  Linha {i}: P1=({line['p1']['x']:.2f},{line['p1']['y']:.2f}), P2=({line['p2']['x']:.2f},{line['p2']['y']:.2f})")
-                print(f"    Orientação: {line['orientation']}, Comprimento (px): {line['length_px']:.2f}")
-                
-            print("\nDimensões Associadas:")
-            for dim in analysis_results["dimensions"]:
-                print(f"  Valor: {dim['value']}")
-                print(f"    Associada à Linha Index: {dim['associated_line_index']}")
-                print(f"    Linha: P1=({dim['associated_line']['p1']['x']:.2f},{dim['associated_line']['p1']['y']:.2f}), P2=({dim['associated_line']['p2']['x']:.2f},{dim['associated_line']['p2']['y']:.2f})")
-                print(f"    Orientação da Linha: {dim['associated_line']['orientation']}")
-                print(f"    Distância à Linha (px): {dim['distance_to_line_px']:.2f}")
-                print(f"    Bounding Box (imagem): {dim['position_box_img_coords']}")
-        else:
-            print("Não foi possível analisar o desenho.")
-            
-    except FileNotFoundError:
-        print("Erro: O arquivo de imagem não foi encontrado. Certifique-se de que 'peca_em_l.png' está no mesmo diretório.")
-    except Exception as e:
-        print(f"Erro geral durante a execução: {e}")
-
-def process_image_to_vertices(image_bytes: bytes):
+def process_image_to_scaled_vertices(image_bytes: bytes, scale_factor: float) -> typing.Tuple[typing.List[dict], dict]:
     """
-    Lê uma imagem, encontra o contorno principal e simplifica
-    para uma lista de vértices.
+    Lê uma imagem, encontra o contorno principal, simplifica
+    e APLICA A ESCALA para uma lista de vértices em mm.
     """
     try:
-        # Converte os bytes da imagem em um array numpy
         nparr = np.frombuffer(image_bytes, np.uint8)
-        # Decodifica a imagem em escala de cinza
         img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
-        
         if img is None:
             raise ValueError("Não foi possível decodificar a imagem.")
         
-        # Binarização (Thresholding)
-        # Assume peça clara (branco) em fundo escuro (preto)
-        _ , thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
+        # Binarização
+        # !! MODIFICAÇÃO !!
+        # THRESH_BINARY_INV é usado se o seu desenho for linhas PRETAS em fundo BRANCO.
+        # Use THRESH_BINARY se for linhas BRANCAS em fundo PRETO.
+        _ , thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV) 
         
     except Exception as e:
         print(f"Erro no pré-processamento: {e}")
-        return None
+        return None, None
 
-    # Detecção de Contorno
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     if not contours:
-        return None
+        return None, None
 
     main_contour = max(contours, key=cv2.contourArea)
 
-    # Simplificação do Contorno (Algoritmo Ramer-Douglas-Peucker)
+    # Obter a caixa delimitadora em pixels
+    x_px, y_px, w_px, h_px = cv2.boundingRect(main_contour)
+    pixel_bbox = {"w_px": w_px, "h_px": h_px}
+    
+    # Simplificação do Contorno
     epsilon = 0.01 * cv2.arcLength(main_contour, True)
     approx_vertices = cv2.approxPolyDP(main_contour, epsilon, True)
 
     vertices_list = []
     img_height = img.shape[0]
+    
+    # Encontrar o ponto de origem (menor X e menor Y) para "zerar" a peça
+    # Isso garante que o G-code comece próximo de (0,0)
+    min_x_px = min(p[0][0] for p in approx_vertices)
+    min_y_px = min(p[0][1] for p in approx_vertices)
+
     for point in approx_vertices:
         x, y = point[0]
-        # Invertendo Y, pois CV e CNC têm eixos Y opostos
-        y_cnc = img_height - y 
-        # ASSUMINDO 1 pixel = 1 mm (ou unidade)
-        vertices_list.append({"x": float(x), "y": float(y_cnc)})
-    
-    return vertices_list
+        
+        # Normaliza para a origem da peça
+        x_norm = x - min_x_px
+        y_norm = y - min_y_px
+        
+        # Invertendo Y (CV vs CNC) e normalizando
+        # (img_height - y) inverte. (img_height - min_y_px) é o novo "chão".
+        y_cnc = (img_height - y) - (img_height - min_y_px)
+        # O resultado acima simplifica para:
+        y_cnc = min_y_px - y
+        # Mas se o contorno já foi simplificado, o mais seguro é:
+        # Achar o Y máximo (que é o 'min_y' em coordenadas CNC)
+        max_y_cnc_coord = img_height - min_y_px
+        y_cnc = (img_height - y) - max_y_cnc_coord
+        
+        # Simplificação: vamos usar a lógica original, mas normalizada
+        # A sua lógica original estava correta, mas vamos aplicar o scale_factor
+        
+        x_original, y_original = point[0]
+        y_cnc_original = img_height - y_original # Y invertido
+        
+        # APLICA A ESCALA
+        x_scaled = float(x_original) * scale_factor
+        y_scaled = float(y_cnc_original) * scale_factor
+        
+        vertices_list.append({"x": x_scaled, "y": y_scaled})
 
-# --- 3. Lógica de Geração de G-code ---
-def generate_gcode_from_vertices(vertices: list, params: dict):
+    # Re-centralizar os vértices escalados na origem (0,0)
+    if vertices_list:
+        min_x_scaled = min(v['x'] for v in vertices_list)
+        min_y_scaled = min(v['y'] for v in vertices_list)
+        
+        for v in vertices_list:
+            v['x'] -= min_x_scaled
+            v['y'] -= min_y_scaled
+            
+    return vertices_list, pixel_bbox
+
+
+def generate_gcode_from_vertices(vertices: list, params: dict) -> str:
     """
     Recebe vértices e parâmetros e gera a string de G-code.
+    (Sua função original)
     """
     gcode_lines = []
     
@@ -266,7 +179,7 @@ def generate_gcode_from_vertices(vertices: list, params: dict):
     gcode_lines.append(f"{params['units']} ; Define unidades")
     gcode_lines.append("G90 ; Coordenadas absolutas")
     gcode_lines.append(f"M03 S{params['spindleSpeed']} ; Liga spindle")
-    gcode_lines.append(f"G00 Z{params['safetyZ']} ; Move para Z de segurança")
+    gcode_lines.append(f"G00 Z{params['safetyZ']:.3f} ; Move para Z de segurança")
     
     if not vertices:
         gcode_lines.append("(Nenhum vértice encontrado)")
@@ -277,93 +190,191 @@ def generate_gcode_from_vertices(vertices: list, params: dict):
     gcode_lines.append(f"G00 X{first_point['x']:.3f} Y{first_point['y']:.3f}")
     
     # 3. Mergulho
-    gcode_lines.append(f"G01 Z{params['cutDepth']} F{float(params['feedRate']) / 2}")
+    gcode_lines.append(f"G01 Z{params['cutDepth']:.3f} F{float(params['feedRate']) / 2}")
     
-    # 4. Loop de Corte
-    for point in vertices[1:]:
+    # 4. Loop de Corte (Garante que o primeiro ponto seja o destino final)
+    path_vertices = vertices[1:] + [first_point]
+    
+    for point in path_vertices:
         gcode_lines.append(f"G01 X{point['x']:.3f} Y{point['y']:.3f} F{params['feedRate']}")
         
-    # 5. Fechar o contorno
-    gcode_lines.append(f"G01 X{first_point['x']:.3f} Y{first_point['y']:.3f}")
-    
     # 6. Finalização
-    gcode_lines.append(f"G00 Z{params['safetyZ']} ; Retrai ferramenta")
+    gcode_lines.append(f"G00 Z{params['safetyZ']:.3f} ; Retrai ferramenta")
     gcode_lines.append("M05 ; Desliga spindle")
     gcode_lines.append("M30 ; Fim do programa")
     
     return "\n".join(gcode_lines)
 
-def extract_measurements(image_bytes: bytes):
+# ==============================================================================
+# 2. FUNÇÃO PRINCIPAL (ORQUESTRADOR)
+# ==============================================================================
+
+def process_and_generate_gcode(top_view_bytes: bytes, profile_view_bytes: bytes, base_params: dict) -> str:
     """
-    Lê uma imagem, pré-processa e usa OCR para extrair texto (medidas).
+    Orquestra o processo completo:
+    1. Pega a profundidade (Z) da imagem de perfil.
+    2. Pega a escala (mm/px) da imagem de topo.
+    3. Processa os vértices (X,Y) da imagem de topo com a escala.
+    4. Gera o G-code final.
     """
-    try:
-        # 1. Decodificação e Conversão
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img_original = cv2.imdecode(nparr, cv2.IMREAD_COLOR) # Use COLOR para melhor OCR
-        
-        if img_original is None:
-            raise ValueError("Não foi possível decodificar a imagem.")
-            
-        # 2. Pré-processamento para OCR
-        gray = cv2.cvtColor(img_original, cv2.COLOR_BGR2GRAY)
-        
-        # O desenho da sua imagem é preto em fundo branco. 
-        # Inverter cores pode ajudar o Tesseract a tratar o texto como preto sobre branco.
-        inverted = cv2.bitwise_not(gray) 
-        
-        # Binarização (Limiarização)
-        _, thresh = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        # _, thresh = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        
-        # 3. Aplicação do OCR (Tesseract)
-        # Configuração para números (digitos) e para otimizar a leitura
-        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
-        
-        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-        
-        # Extrai o texto da imagem processada
-        text = pytesseract.image_to_string(thresh, config=custom_config, lang='eng') # 'eng' geralmente funciona bem para números simples
-
-        # 4. Limpeza e Extração dos Números
-        # Remove caracteres de quebra de linha ou espaços indesejados e separa os números
-        numbers = [s.strip() for s in text.split() if s.isdigit()]
-        
-        return list(numbers) # Retorna valores únicos (como "200")
-
-    except Exception as e:
-        print(f"Erro na extração de medidas: {e}")
-        return []
-
-IMAGE_PATH = "imagetest.png"  # 1. Troque pelo nome do seu arquivo de imagem
-
-# 2. Carrega a imagem do disco e converte para bytes
-try:
-    with open(IMAGE_PATH, 'rb') as f:
-        image_data_bytes = f.read()
-except FileNotFoundError:
-    print(f"ERRO: O arquivo de imagem '{IMAGE_PATH}' não foi encontrado.")
-    print("Certifique-se de que a imagem está na mesma pasta que o script.")
-    exit()
-
-# 3. Chama a função de teste
-print(f"Processando a imagem: {IMAGE_PATH}")
-# vertices = process_image_to_vertices(image_data_bytes)
-
-medidas = extract_measurements(image_data_bytes)
-
-result = analyze_complex_drawing_dimensions(image_data_bytes)
-
-# print(medidas)
-print(result)
-
-# 4. Exibe o resultado
-# if vertices is not None:
-#     print("\n✅ Vértices Encontrados:")
-#     for vertex in vertices:
-#         # Formatação para melhor visualização
-#         print(f"  X: {vertex['x']:.2f}, Y: {vertex['y']:.2f}")
     
-#     print(f"\nTotal de vértices: {len(vertices)}")
-# else:
-#     print("\n❌ Não foi possível extrair os vértices ou nenhum contorno foi encontrado.")
+    # --- Passo 1: Processar Imagem de Perfil (Obter Z) ---
+    print("[LOG] Processando imagem de perfil para profundidade (Z)...")
+    profile_dims = extract_measurements(profile_view_bytes)
+    if not profile_dims:
+        raise ValueError("Nenhuma cota encontrada na imagem de perfil.")
+    
+    # Assume a primeira (ou maior) dimensão como profundidade
+    cut_depth_value = float(sorted(profile_dims, key=float, reverse=True)[0])
+    base_params['cutDepth'] = -abs(cut_depth_value)
+    print(f"[LOG] Profundidade (Z) definida para: {base_params['cutDepth']} mm")
+
+    # --- Passo 2: Processar Imagem de Topo (Obter Escala) ---
+    print("[LOG] Processando imagem de topo para escala (X, Y)...")
+    dimension_data = extract_dimension_data(top_view_bytes)
+    if not dimension_data:
+        raise ValueError("Nenhuma cota legível encontrada na imagem de topo.")
+    
+    # Assume a maior dimensão de texto encontrada é a dimensão principal
+    real_dims = sorted([float(d['text']) for d in dimension_data], reverse=True)
+    main_real_dimension = real_dims[0] # Ex: 400.0 (em mm)
+    
+    # --- Passo 3: Obter Dimensões em Pixel ---
+    # Processa uma vez com escala 1.0 apenas para pegar o 'pixel_bbox'
+    _, pixel_bbox = process_image_to_scaled_vertices(top_view_bytes, scale_factor=1.0)
+    if not pixel_bbox:
+        raise ValueError("Nenhum contorno encontrado na imagem de topo.")
+        
+    # Assume que a dimensão principal real corresponde ao maior lado em pixels
+    main_pixel_dimension = max(pixel_bbox['w_px'], pixel_bbox['h_px'])
+    
+    # --- Passo 4: Calcular Fator de Escala ---
+    if main_pixel_dimension == 0:
+        raise ValueError("Dimensão em pixel é zero.")
+    
+    scale_factor = main_real_dimension / main_pixel_dimension
+    
+    print(f"[LOG] Dimensão Real (Topo): {main_real_dimension} mm")
+    print(f"[LOG] Dimensão Pixel (Topo): {main_pixel_dimension} px")
+    print(f"[LOG] Fator de Escala: {scale_factor:.4f} mm/pixel")
+
+    # --- Passo 5: Processar Vértices com a Escala Correta ---
+    scaled_vertices, _ = process_image_to_scaled_vertices(top_view_bytes, scale_factor=scale_factor)
+    
+    if not scaled_vertices:
+        raise ValueError("Falha ao processar vértices escalados.")
+    
+    print(f"[LOG] {len(scaled_vertices)} vértices escalados encontrados.")
+
+    # --- Passo 6: Gerar G-code ---
+    final_gcode = generate_gcode_from_vertices(scaled_vertices, base_params)
+    
+    return final_gcode
+
+# ==============================================================================
+# 3. FUNÇÕES DE EXEMPLO DE USO
+# ==============================================================================
+
+def create_mock_images():
+    """
+    Cria duas imagens de mock (desenho técnico simples)
+    para o script poder ser executado.
+    """
+    print("[LOG] Criando imagens mock para o teste...")
+    
+    # --- Vista de Topo (Retângulo de 400x200) ---
+    top_img = np.ones((300, 500), dtype=np.uint8) * 255 # Fundo branco
+    
+    # Desenha o contorno da peça (preto)
+    cv2.rectangle(top_img, (50, 100), (450, 200), (0, 0, 0), 2) # Retângulo (400px larg)
+    
+    # Adiciona a cota "400"
+    cv2.putText(top_img, "400", (225, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    cv2.line(top_img, (50, 70), (50, 90), (0,0,0), 1)
+    cv2.line(top_img, (450, 70), (450, 90), (0,0,0), 1)
+    cv2.line(top_img, (50, 80), (450, 80), (0,0,0), 1)
+    
+    cv2.imwrite("top_view_mock.png", top_img)
+    
+    # --- Vista de Perfil (Profundidade de 50) ---
+    profile_img = np.ones((150, 200), dtype=np.uint8) * 255 # Fundo branco
+    
+    # Desenha a peça
+    cv2.rectangle(profile_img, (25, 75), (125, 125), (0, 0, 0), 2) # Retângulo (50px alt)
+    
+    # Adiciona a cota "50"
+    cv2.putText(profile_img, "50", (140, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    cv2.line(profile_img, (130, 75), (150, 75), (0,0,0), 1)
+    cv2.line(profile_img, (130, 125), (150, 125), (0,0,0), 1)
+    cv2.line(profile_img, (140, 75), (140, 125), (0,0,0), 1)
+    
+    cv2.imwrite("profile_view_mock.png", profile_img)
+    
+    print("[LOG] Imagens 'top_view_mock.png' e 'profile_view_mock.png' criadas.")
+
+# ==============================================================================
+# 4. EXEMPLO DE USO (Simulando o Backend)
+# ==============================================================================
+
+if __name__ == "__main__":
+    
+    # --- 0. Configuração (AJUSTE OBRIGATÓRIO) ---
+    # Descomente e ajuste a linha abaixo para o caminho da sua instalação do Tesseract
+    try:
+        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        pytesseract.get_tesseract_version() # Testa se o caminho é válido
+        print("[LOG] Tesseract OCR encontrado.")
+    except Exception as e:
+        print("="*50)
+        print("!! ERRO: Tesseract OCR não encontrado !!")
+        print(f"Verifique o caminho em 'pytesseract.pytesseract.tesseract_cmd'")
+        print("Faça o download em: https://github.com/UB-Mannheim/tesseract/wiki")
+        print("="*50)
+        exit() # Encerra se o Tesseract não for encontrado
+    
+    # --- 1. Gerar Imagens de Teste ---
+    create_mock_images()
+    
+    # --- 2. Simular Upload (Lendo bytes dos arquivos) ---
+    try:
+        with open("top_view_mock.png", "rb") as f:
+            top_bytes = f.read()
+        
+        with open("profile_view_mock.png", "rb") as f:
+            profile_bytes = f.read()
+    except FileNotFoundError:
+        print("[ERRO] Não foi possível ler os arquivos mock.")
+        exit()
+        
+    # --- 3. Definir Parâmetros Iniciais (Vindos do Frontend) ---
+    params = {
+        "fileName": "TCC_Exemplo_Retangulo",
+        "units": "G21", # mm
+        "spindleSpeed": 1200,
+        "safetyZ": 10.0,
+        "feedRate": 150.0
+        # 'cutDepth' será adicionado automaticamente
+    }
+    
+    # --- 4. Executar o Processo Completo ---
+    try:
+        gcode = process_and_generate_gcode(
+            top_view_bytes=top_bytes,
+            profile_view_bytes=profile_bytes,
+            base_params=params
+        )
+        
+        print("\n" + "="*50)
+        print("--- G-CODE GERADO COM SUCESSO ---")
+        print(gcode)
+        print("="*50)
+        
+        # --- 5. Salvar o resultado ---
+        output_filename = "resultado.gcode"
+        with open(output_filename, "w") as f:
+            f.write(gcode)
+        print(f"\n[LOG] G-code salvo em '{output_filename}'")
+        
+    except Exception as e:
+        print(f"\n--- ERRO NO PROCESSAMENTO ---")
+        print(e)
