@@ -90,10 +90,42 @@ function App() {
     fileInputRef.current.click();
   };
 
+  const handleExportGCode = () => {
+    if (!gCode) return; // Segurança: não exporta se estiver vazio
+
+    // Cria o objeto Blob com o conteúdo do G-code
+    const blob = new Blob([gCode], { type: 'text/plain' });
+    
+    // Cria uma URL temporária para o Blob
+    const url = URL.createObjectURL(blob);
+    
+    // Cria um elemento <a> invisível
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Define o nome do arquivo. Tenta usar o nome da imagem original ou usa um padrão
+    let fileName = 'projeto.gcode';
+    if (selectedFile && selectedFile.name) {
+      // Pega o nome sem a extensão original (ex: imagem.png -> imagem)
+      const nameWithoutExt = selectedFile.name.split('.').slice(0, -1).join('.');
+      fileName = `${nameWithoutExt}.gcode`;
+    }
+    
+    link.download = fileName;
+    
+    // Adiciona ao DOM, clica e remove
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Limpa a memória
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container">
       <header className="header">
-        <h1>G-code Automator</h1>
+        <h1>G-code Generator</h1>
       </header>
       
       <main className="content">
@@ -158,12 +190,20 @@ function App() {
         </div>
 
         {/* Coluna da Direita: Caixa de G-code */}
-        <textarea
-          className="gcode-textarea"
-          value={gCode}
-          readOnly
-          placeholder="O código G-code gerado aparecerá aqui..."
-        />
+        <div className="right-column"> {/* Adicionei uma classe aqui para facilitar o layout */}
+          <textarea
+            className="gcode-textarea"
+            value={gCode}
+            readOnly
+            placeholder="O código G-code gerado aparecerá aqui..."
+          />
+          
+          {gCode && (
+            <button className="export-button" onClick={handleExportGCode}>
+              Exportar Arquivo (.gcode)
+            </button>
+          )}
+        </div>
       </main>
     </div>
   );
