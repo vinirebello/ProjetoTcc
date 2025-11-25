@@ -75,7 +75,7 @@ body {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  width: 50%;
+  width: 70%;
 }
 
 .create-button:hover {
@@ -130,15 +130,41 @@ body {
 
 
 /* Estilo da caixa de texto (textarea) */
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px; /* Espaço entre o textarea e o botão */
+  width: 100%; /* Ou o tamanho que desejar */
+}
+
 .gcode-textarea {
-  flex: 1; /* Faz a caixa de texto ocupar todo o espaço restante */
-  height: 550px; /* Aumentei a altura para compensar o formulário */
-  border: 1px solid #ccd0d5;
+  width: 100%;
+  height: 400px; /* Altura fixa ou min-height */
+  font-family: 'Courier New', Courier, monospace; /* Fonte monoespaçada para código */
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical; /* Permite redimensionar apenas verticalmente */
+}
+
+.export-button {
+  background-color: #28a745; /* Cor verde (sucesso/download) */
+  color: white;
+  padding: 12px 20px;
+  border: none;
   border-radius: 5px;
-  padding: 15px;
-  font-family: 'Courier New', Courier, monospace; 
-  font-size: 0.9rem;
-  background-color: #fdfdfd;
-  resize: vertical;
-  line-height: 1.5;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  align-self: flex-end; /* Alinha o botão à direita, se desejar */
+  /* Se quiser que o botão ocupe a largura toda, use: width: 100%; e remova o align-self */
+}
+
+.export-button:hover {
+  background-color: #218838; /* Verde um pouco mais escuro no hover */
+}
+
+.export-button:active {
+  transform: translateY(1px); /* Efeito de clique */
 }
