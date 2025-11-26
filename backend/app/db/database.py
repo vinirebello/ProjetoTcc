@@ -29,7 +29,6 @@ def registerDatabase(initialParams: dict, gcodeResult: str):
             "params": initialParams,
             "gcode": gcodeResult,
             "upload_date": datetime.now(),
-            "status": "pending",
         }
         result = collection.insert_one(drawing_record)
         print(f"Registro de dado inserido com o ID: {result.inserted_id}")
