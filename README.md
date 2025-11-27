@@ -8,7 +8,7 @@ Este projeto consiste em uma aplicação web Fullstack desenvolvida para automat
 
 ## Sobre o Projeto
 
-A programação manual de máquinas CNC  pode ser trabalhosa e propensa a erros humanos. Este software visa simplificar esse processo para geometrias 2D, permitindo que o operador faça o upload de um desenho (foto ou scan), configure os parâmetros de corte e receba o arquivo `.gcode` instantaneamente. O projeto visa simplificar o entendimento inicial quando se esta começando a aprender códigos CNC, mantendo um interface mais amigável e prática, sem necessidade de desenhos altamente técnicos, sendo um uso simples e prático.
+A programação manual de máquinas CNC  pode ser trabalhosa e propensa a erros humanos. Este software visa simplificar esse processo para geometrias 2D, permitindo que o operador faça o upload de um desenho (foto ou scan), configure os parâmetros de corte e receba o arquivo `.gcode` instantaneamente. O projeto visa simplificar o entendimento inicial quando se esta começando a aprender códigos CNC, mantendo uma interface mais amigável, sem necessidade de desenhos altamente técnicos, sendo um uso simples e prático.
 
 O diferencial técnico é o uso de **Visão Computacional** para extrair o contorno da peça e **OCR (Reconhecimento Óptico de Caracteres)** para ler as cotas da imagem e calcular a escala automaticamente, sem necessidade de informar as dimensões manualmente.
 
@@ -64,7 +64,7 @@ Para executar o projeto, você precisará das seguintes ferramentas instaladas:
 
 ---
 
-## ⚡ Instalação e Execução
+## Instalação e Execução
 
 Siga os passos abaixo em dois terminais diferentes (um para o backend, outro para o frontend).
 
