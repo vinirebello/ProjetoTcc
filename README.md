@@ -1,29 +1,14 @@
 # 🏭 G-Code Generator: Visão Computacional para CNC
 
-> **Projeto de Trabalho de Conclusão de Curso (TCC)**
-> **Curso:** Engenharia de Software / Controle e Automação
+> **Projeto de Trabalho de Conclusão de Curso**
+> **Curso:** Engenharia de Software
 
-Este projeto consiste em uma aplicação web Fullstack desenvolvida para automatizar a criação de rotas de usinagem (G-Code) para fresadoras verticais CNC. O sistema processa imagens de desenhos técnicos 2D simples, detecta a geometria da peça e suas dimensões reais, e gera o código de máquina pronto para execução.
+Este projeto consiste em uma aplicação web Fullstack desenvolvida para automatizar a criação de rotas de usinagem (G-Code) para fresadoras verticais CNC. O sistema processa imagens de desenhos 2D simples, detecta a geometria da peça e suas dimensões reais, e gera o código de máquina pronto para execução.
 
----
-
-## 📋 Índice
-
-- [Sobre o Projeto](#-sobre-o-projeto)
-- [Funcionalidades](#-funcionalidades)
-- [Arquitetura e Tecnologias](#-arquitetura-e-tecnologias)
-- [Pré-requisitos](#-pré-requisitos)
-- [Instalação e Execução](#-instalação-e-execução)
-- [Como Funciona o Algoritmo](#-como-funciona-o-algoritmo)
-- [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Aviso de Segurança](#-aviso-de-segurança)
-- [Autor](#-autor)
-
----
 
 ## 📖 Sobre o Projeto
 
-A programação manual de máquinas CNC (Comando Numérico Computadorizado) pode ser trabalhosa e propensa a erros humanos. Este software visa simplificar esse processo para geometrias 2D, permitindo que o operador faça o upload de um desenho (foto ou scan), configure os parâmetros de corte e receba o arquivo `.nc` ou `.gcode` instantaneamente.
+A programação manual de máquinas CNC  pode ser trabalhosa e propensa a erros humanos. Este software visa simplificar esse processo para geometrias 2D, permitindo que o operador faça o upload de um desenho (foto ou scan), configure os parâmetros de corte e receba o arquivo `.gcode` instantaneamente. O projeto visa simplificar o entendimento inicial quando se esta começando a aprender códigos CNC, mantendo um interface mais amigável e prática, sem necessidade de desenhos altamente técnicos, sendo um uso simples e prático.
 
 O diferencial técnico é o uso de **Visão Computacional** para extrair o contorno da peça e **OCR (Reconhecimento Óptico de Caracteres)** para ler as cotas da imagem e calcular a escala automaticamente, sem necessidade de informar as dimensões manualmente.
 
@@ -40,7 +25,6 @@ O diferencial técnico é o uso de **Visão Computacional** para extrair o conto
     * Profundidade de Corte (Z-Depth).
     * Altura de Segurança (Safe Z).
     * Unidades (mm/pol).
-* **Histórico de Operações:** Registro lateral persistente dos códigos gerados anteriormente.
 * **Visualização e Exportação:** Preview do código G em tela e download direto do arquivo.
 
 ---
