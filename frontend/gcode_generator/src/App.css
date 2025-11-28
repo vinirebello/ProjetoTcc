@@ -1,170 +1,299 @@
-/* Estilo geral da página */
-body {
+/* --- RESET E ESTRUTURA GLOBAL --- */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background-color: #f0f2f5;
-  margin: 0;
-  padding: 20px;
 }
 
-/* Container principal */
-.container {
-  max-width: 1000px;
-  margin: 40px auto;
-  background-color: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
+/* Container que segura toda a aplicação (Header + Corpo) */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh; /* Ocupa 100% da altura da viewport */
+  overflow: hidden; /* Evita scroll na janela principal */
 }
 
-/* Header com o título */
+/* --- HEADER --- */
 .header {
   text-align: center;
-  padding: 25px;
+  padding: 15px 25px;
   background-color: #007bff;
   color: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  z-index: 10;
 }
 
 .header h1 {
   margin: 0;
-  font-size: 2.2rem;
+  font-size: 1.5rem; /* Levemente menor para ganhar espaço vertical */
   font-weight: 600;
 }
 
-/* Conteúdo principal (layout de 2 colunas) */
-.content {
+/* --- LAYOUT PRINCIPAL (Sidebar + Conteúdo) --- */
+.main-layout {
   display: flex;
-  flex-direction: row; /* Itens lado a lado */
-  gap: 20px;
-  padding: 30px;
-  align-items: flex-start; /* Alinha o topo das colunas */
+  flex: 1; /* Ocupa o espaço restante abaixo do header */
+  overflow: hidden; /* O scroll será interno nos filhos */
 }
 
-/* --- NOVO: Coluna da Esquerda --- */
-/* Agrupa o botão e o formulário de parâmetros */
+/* --- NOVA BARRA LATERAL (SIDEBAR) --- */
+.sidebar {
+  width: 280px; /* Largura fixa */
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow-y: auto; /* Scroll apenas na sidebar se a lista for longa */
+}
+
+.sidebar h3 {
+  padding: 20px;
+  margin: 0;
+  font-size: 1.1rem;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  background-color: #f8f9fa;
+  position: sticky;
+  top: 0;
+}
+
+.history-list {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Item individual do histórico */
+.history-item {
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.history-item:hover {
+  border-color: #007bff;
+  background-color: #f0f7ff;
+  transform: translateX(2px);
+}
+
+.history-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.history-info strong {
+  font-size: 0.9rem;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.history-info span {
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+/* Botão de deletar (X) */
+.delete-btn {
+  background: transparent;
+  border: none;
+  color: #ff6b6b;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.delete-btn:hover {
+  background-color: #ffe3e3;
+  color: #d63031;
+}
+
+/* --- ÁREA DE CONTEÚDO (Centro) --- */
+.content {
+  flex: 1; /* Ocupa o resto da largura */
+  display: flex;
+  flex-direction: row;
+  gap: 30px;
+  padding: 30px;
+  overflow-y: auto; /* Scroll no conteúdo principal */
+  background-color: #f4f6f8;
+}
+
+/* --- COLUNA ESQUERDA (Formulários) --- */
 .left-column {
   display: flex;
-  flex-direction: column; /* Botão em cima, formulário embaixo */
-  justify-content: center;
-  align-items: center;
-  gap: 20px;
-  width: 320px; /* Largura fixa para a coluna de controles */
+  flex-direction: column;
+  gap: 15px;
+  width: 300px; /* Largura fixa dos inputs */
+  min-width: 300px;
 }
 
-/* Estilo do botão de upload */
 .upload-button {
   background-color: #007bff;
   color: white;
   border: none;
-  border-radius: 5px;
-  padding: 15px 30px;
-  font-size: 1rem;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease;
-  width: 100%; /* Faz o botão ocupar a largura da coluna */
-}
-
-.create-button {
-  background-color: #007bff;
+  transition: background-color 0.2s;
+  width: 100%;
+  display: flex;
   justify-content: center;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  padding: 15px 30px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  width: 70%;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,123,255,0.2);
 }
 
-.create-button:hover {
-  background-color: #0056b3;
+.upload-button:hover { background-color: #0056b3; }
+
+.file-name-display {
+  font-size: 0.85rem;
+  color: #555;
+  background: #e9ecef;
+  padding: 8px;
+  border-radius: 4px;
+  text-align: center;
+  word-break: break-all;
 }
 
-.upload-button:hover {
-  background-color: #0056b3;
-}
-
-/* --- NOVO: Estilos do Formulário de Parâmetros --- */
+/* Formulário de Parâmetros */
 .parameters-form {
-  background-color: #f9f9f9;
+  background-color: #ffffff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .parameters-form h3 {
   margin-top: 0;
-  margin-bottom: 20px;
-  text-align: center;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
   color: #333;
-  font-weight: 600;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 10px;
 }
 
 .form-group {
-  margin-bottom: 15px;
-  display: flex;
-  flex-direction: column;
+  margin-bottom: 12px;
 }
 
 .form-group label {
-  margin-bottom: 6px;
-  font-weight: 500;
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
   color: #555;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
-.form-group input,
-.form-group select {
+.form-group input {
   width: 100%;
-  padding: 9px 12px;
-  border: 1px solid #ccd0d5;
+  padding: 8px 10px;
+  border: 1px solid #ced4da;
   border-radius: 4px;
-  font-size: 0.95rem;
-  box-sizing: border-box; /* Garante que padding não estoure a largura */
-  background-color: #fff;
+  font-size: 0.9rem;
+  box-sizing: border-box;
 }
-/* --- Fim dos novos estilos --- */
 
+.form-group input:focus {
+  border-color: #80bdff;
+  outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
 
-/* Estilo da caixa de texto (textarea) */
+.create-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  margin-top: 10px;
+  box-shadow: 0 2px 4px rgba(40,167,69,0.2);
+}
+
+.create-button:hover {
+  background-color: #218838;
+  transform: translateY(-1px);
+}
+
+/* --- COLUNA DIREITA (Resultado G-Code) --- */
 .right-column {
+  flex: 1; /* Ocupa o resto da largura */
   display: flex;
   flex-direction: column;
-  gap: 10px; /* Espaço entre o textarea e o botão */
-  width: 100%; /* Ou o tamanho que desejar */
+  gap: 15px;
+  min-width: 300px;
 }
 
 .gcode-textarea {
+  flex: 1; /* Expande para preencher a altura disponível */
   width: 100%;
-  height: 400px; /* Altura fixa ou min-height */
-  font-family: 'Courier New', Courier, monospace; /* Fonte monoespaçada para código */
-  padding: 10px;
+  min-height: 400px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 15px;
   border: 1px solid #ccc;
-  border-radius: 4px;
-  resize: vertical; /* Permite redimensionar apenas verticalmente */
+  border-radius: 8px;
+  resize: none; /* Flexbox controla o tamanho */
+  background-color: #ffffff; /* Fundo escuro estilo editor */
+  color: #000000; /* Texto claro */
+  box-sizing: border-box;
 }
 
 .export-button {
-  background-color: #28a745; /* Cor verde (sucesso/download) */
+  background-color: #17a2b8;
   color: white;
-  padding: 12px 20px;
+  padding: 12px 25px;
   border: none;
-  border-radius: 5px;
-  font-size: 16px;
-  font-weight: bold;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.3s ease;
-  align-self: flex-end; /* Alinha o botão à direita, se desejar */
-  /* Se quiser que o botão ocupe a largura toda, use: width: 100%; e remova o align-self */
+  align-self: flex-start; /* Botão à esquerda */
+  transition: background-color 0.2s;
+  box-shadow: 0 2px 4px rgba(23,162,184,0.2);
 }
 
-.export-button:hover {
-  background-color: #218838; /* Verde um pouco mais escuro no hover */
-}
+.export-button:hover { background-color: #138496; }
 
-.export-button:active {
-  transform: translateY(1px); /* Efeito de clique */
+/* Scrollbar Bonita (WebKit) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }

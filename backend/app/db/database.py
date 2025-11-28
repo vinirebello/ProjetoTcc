@@ -1,6 +1,7 @@
 import pymongo
-from pymongo import MongoClient
+from pymongo import MongoClient, DESCENDING
 from pymongo.errors import ConnectionFailure
+from bson.objectid import ObjectId
 from datetime import datetime
 
 MONGO_URI = "mongodb+srv://vrebello21_db_user:admin2106@cluster.t7vznud.mongodb.net/"
@@ -55,9 +56,53 @@ def update_drawing_status(file_id, new_status, gcode_path=None):
             print(f"Status do registro {file_id} atualizado para '{new_status}'.")
         else:
             print(f"Nenhum registro encontrado com o ID {file_id}.")
+            
+def getFormattedItems(limit=20):
+    """
+    Busca os últimos registros formatados para o Frontend.
+    Trata erros caso o campo de data não exista.
+    """
+    db = connect_db()
+    if db is not None:
+        collection = db.get_collection(COLLECTION_NAME)
+        
+        # Busca ordenando por _id (o _id contém a data de criação embutida, então funciona sempre)
+        cursor = collection.find({}).sort("_id", DESCENDING).limit(limit)
+        
+        history_list = []
+        for doc in cursor:
+            # Tenta pegar 'upload_date', se não tiver tenta 'timestamp', se não tiver usa data atual
+            date_obj = doc.get("upload_date") or doc.get("timestamp")
+            
+            # Formatação segura da data
+            if isinstance(date_obj, datetime):
+                formatted_date = date_obj.strftime("%d/%m/%Y %H:%M")
+            else:
+                formatted_date = "Data Desconhecida"
 
-def get_all_drawings():
-    """Retorna todos os registros de desenhos da coleção."""
+            # Tratamento seguro para params (caso seja antigo e não tenha)
+            params = doc.get("params", {})
+
+            history_list.append({
+                "id": str(doc["_id"]),
+                "filename": params.get("fileName") or doc.get("filename", "Sem nome"),
+                "timestamp": formatted_date,
+                "params": params,
+                "gcode": doc.get("gcode", "")
+            })
+        return history_list
+    return []
+
+def deleteItem(file_id: str):
+    """Remove um item do histórico pelo ID."""
+    db = connect_db()
+    if db is not None:
+        collection = db.get_collection(COLLECTION_NAME)
+        result = collection.delete_one({"_id": ObjectId(file_id)})
+        return result.deleted_count > 0
+    return False
+
+def getAllItems():
     db = connect_db()
     if db:
         collection = db[COLLECTION_NAME]

@@ -1,80 +1,101 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './App.css';
 
 function App() {
-  // Estado para o G-code
+
   const [gCode, setGCode] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null)
   
-  // --- NOVOS ESTADOS PARA OS PARÂMETROS ---
-  const[selectedFile, setSelectedFile] = useState(null)
-  const [units, setUnits] = useState('G21'); // G21 = mm, G20 = polegadas
-  const [spindleSpeed, setSpindleSpeed] = useState(1200); // RPM
-  const [feedRate, setFeedRate] = useState(500); // Avanço (mm/min)
-  const [safetyZ, setSafetyZ] = useState(5.0); // Altura de segurança Z
-  const [cutDepth, setCutDepth] = useState(-1.0); // Profundidade de corte Z
+  // Estados do Formulário
+  const [spindleSpeed, setSpindleSpeed] = useState(1200); 
+  const [feedRate, setFeedRate] = useState(500); 
+  const [safetyZ, setSafetyZ] = useState(5.0); 
+  const [thickness, setThickness] = useState(10.0); // Ajustei padrão para positivo para facilitar
+  const [stepDown, setStepDown] = useState(2.0); 
   
-  // Referência para o input de arquivo escondido
+  // Novo Estado para o Histórico
+  const [historyList, setHistoryList] = useState([]);
+  
   const fileInputRef = useRef(null);
 
-  // Função chamada quando um arquivo é selecionado
-  const handleCreateButton = async () => { // <--- Tornou-se async
+  // --- 1. Buscar Histórico ao Iniciar ---
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/history');
+      if (response.ok) {
+        const data = await response.json();
+        setHistoryList(data);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar histórico:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const handleLoadHistory = (item) => {
+
+    setSpindleSpeed(item.params.spindleSpeed);
+    setFeedRate(item.params.feedRate);
+    setSafetyZ(item.params.safetyZ);
+    setThickness(item.params.thickness);
+    setStepDown(item.params.stepDown);
+    
+    setGCode(item.gcode);
+    
+    setSelectedFile(null); 
+  };
+
+  const handleDeleteHistory = async (e, id) => {
+    e.stopPropagation(); 
+    if(!window.confirm("Deseja deletar este registro?")) return;
+
+    try {
+        await fetch(`http://localhost:8000/api/history/${id}`, { method: 'DELETE' });
+        fetchHistory(); 
+    } catch (error) {
+        console.error("Erro ao deletar", error);
+    }
+  };
+
+  const handleCreateButton = async () => { 
     const file = selectedFile;
     if (!file) {
       setGCode("(ERRO: Por favor, escolha um arquivo de imagem primeiro.)");
       return;
     }
 
-    console.log("Enviando para o backend:", file.name);
-    console.log("Parâmetros:", { units, spindleSpeed, feedRate, safetyZ, cutDepth });
-
-    // 1. Criar um FormData para enviar arquivo + campos
     const formData = new FormData();
-    formData.append('file', file); // A chave 'file' deve ser a mesma do FastAPI
-    
-    // Adiciona os parâmetros. As chaves devem ser as mesmas do FastAPI
-    formData.append('units', units);
+    formData.append('file', file); 
     formData.append('spindleSpeed', spindleSpeed);
     formData.append('feedRate', feedRate);
     formData.append('safetyZ', safetyZ);
-    formData.append('cutDepth', cutDepth);
+    formData.append('thickness', thickness);
+    formData.append('stepDown', stepDown)
 
-    // Limpa o G-code antigo e mostra um 'loading'
-    setGCode("(Processando imagem com OpenCV e gerando G-code...)");
+    setGCode("(Processando imagem e salvando no banco...)");
 
     try {
-      // 2. Fazer a chamada de API para o backend
       const response = await fetch('http://localhost:8000/api/generate-gcode', {
         method: 'POST',
         body: formData,
-        // Não defina 'Content-Type', o browser faz isso
-        // automaticamente para FormData (incluindo o 'boundary')
       });
 
-      // 3. Lidar com a resposta
       if (!response.ok) {
-        // Se a resposta não foi OK, leia a mensagem de erro como TEXTO
         const errorText = await response.text();
-        
-        // Tenta fazer o parse do erro (FastAPI envia JSON para erros)
-        try {
-           const errorJson = JSON.parse(errorText);
-           setGCode(`(ERRO DO BACKEND: ${errorJson.detail || errorText})`);
-        } catch (e) {
-           // Se não for JSON, mostre o texto do erro
-           setGCode(`(ERRO DO BACKEND: ${errorText})`);
-        }
-
+        setGCode(`(ERRO: ${errorText})`);
       } else {
-        // Sucesso! A resposta é JSON (uma string JSON)
-        // Usar response.json() faz o parse automático da string JSON
-        // para uma string JavaScript, que o textarea entende.
-        const gcodeString = await response.json(); 
-        setGCode(gcodeString);
+        const data = await response.json(); 
+        setGCode(data.gcode);
+        
+        fetchHistory();
       }
 
     } catch (error) {
-      console.error("Erro ao conectar com o backend:", error);
-      setGCode(`(ERRO DE CONEXÃO: Não foi possível conectar ao backend em http://localhost:8000. Você iniciou o servidor Python?)`);
+      console.error("Erro:", error);
+      setGCode(`(ERRO DE CONEXÃO)`);
     }
   };
 
@@ -82,7 +103,6 @@ function App() {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
       setSelectedFile(file);
-      console.log("Arquivo armazenado:", file.name);
     }
   };
 
@@ -91,120 +111,128 @@ function App() {
   };
 
   const handleExportGCode = () => {
-    if (!gCode) return; // Segurança: não exporta se estiver vazio
-
-    // Cria o objeto Blob com o conteúdo do G-code
+    if (!gCode) return; 
     const blob = new Blob([gCode], { type: 'text/plain' });
-    
-    // Cria uma URL temporária para o Blob
     const url = URL.createObjectURL(blob);
-    
-    // Cria um elemento <a> invisível
     const link = document.createElement('a');
     link.href = url;
-    
-    // Define o nome do arquivo. Tenta usar o nome da imagem original ou usa um padrão
     let fileName = 'projeto.gcode';
     if (selectedFile && selectedFile.name) {
-      // Pega o nome sem a extensão original (ex: imagem.png -> imagem)
       const nameWithoutExt = selectedFile.name.split('.').slice(0, -1).join('.');
       fileName = `${nameWithoutExt}.gcode`;
     }
-    
     link.download = fileName;
-    
-    // Adiciona ao DOM, clica e remove
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
-    // Limpa a memória
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="container">
+    <div className="app-container">
       <header className="header">
         <h1>G-code Generator</h1>
       </header>
       
-      <main className="content">
+      <div className="main-layout">
         
-        <div className="left-column">
-          
-          <button className="upload-button" onClick={handleUploadButtonClick}>
-            Escolher Imagem (PNG/JPG)
-          </button>
-          
-          {selectedFile && (
-            <span className="file-name-display">
-              Arquivo: {selectedFile.name}
-            </span>
-          )}
+        <aside className="sidebar">
+            <h3>Histórico</h3>
+            <div className="history-list">
+                {historyList.length === 0 && <p style={{fontSize:'0.8rem', color:'#666'}}>Nenhum registro.</p>}
+                
+                {historyList.map((item) => (
+                    <div key={item.id} className="history-item" onClick={() => handleLoadHistory(item)}>
+                        <div className="history-info">
+                            <strong>{item.filename}</strong>
+                            <span>{item.timestamp}</span>
+                        </div>
+                        <button className="delete-btn" onClick={(e) => handleDeleteHistory(e, item.id)}>
+                            X
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </aside>
 
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelected}
-            accept=".png, .jpeg, .jpg"
-            style={{ display: 'none' }} 
-          />
+        <main className="content">
           
-          {/* --- NOVA ÁREA DE PARÂMETROS --- */}
-          <div className="parameters-form">
-            <h3>Parâmetros Iniciais</h3>
+          <div className="left-column">
             
-            <div className="form-group">
-              <label>Unidades</label>
-              <select value={units} onChange={e => setUnits(e.target.value)}>
-                <option value="G21">Milímetros (G21)</option>
-                <option value="G20">Polegadas (G20)</option>
-              </select>
-            </div>
+            <button className="upload-button" onClick={handleUploadButtonClick}>
+              Escolher Nova Imagem
+            </button>
             
-            <div className="form-group">
-              <label>Veloc. Spindle (RPM)</label>
-              <input type="number" value={spindleSpeed} onChange={e => setSpindleSpeed(e.target.value)} />
-            </div>
+            {selectedFile && (
+              <span className="file-name-display">
+                Arquivo: {selectedFile.name}
+              </span>
+            )}
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelected}
+              accept=".png, .jpeg, .jpg"
+              style={{ display: 'none' }} 
+            />
             
-            <div className="form-group">
-              <label>Avanço de Corte (mm/min)</label>
-              <input type="number" value={feedRate} onChange={e => setFeedRate(e.target.value)} />
+            <div className="parameters-form">
+              <h3>Configuração</h3>
+              
+              <div className="form-group">
+                <label>Veloc. Spindle (RPM)</label>
+                <input type="number" value={spindleSpeed} onChange={e => setSpindleSpeed(e.target.value)} />
+              </div>
+              
+              <div className="form-group">
+                <label>Avanço (mm/min)</label>
+                <input type="number" value={feedRate} onChange={e => setFeedRate(e.target.value)} />
+              </div>
+              
+              <div className="form-group">
+                <label>Z Segurança (mm)</label>
+                <input type="number" step="0.1" value={safetyZ} onChange={e => setSafetyZ(e.target.value)} />
+              </div>
+              
+              <div className="form-group">
+                <label>Espessura Peça (mm)</label>
+                <input type="number" step="0.1" value={thickness} onChange={e => setThickness(e.target.value)} />
+              </div>
+
+              <div className="form-group">
+                <label>Passo Z (Step Down)</label>
+                <input 
+                  type="number" 
+                  step="0.1" 
+                  value={stepDown} 
+                  onChange={e => setStepDown(e.target.value)}
+                />
+              </div>
             </div>
-            
-            <div className="form-group">
-              <label>Altura Segurança (Z)</label>
-              <input type="number" step="0.1" value={safetyZ} onChange={e => setSafetyZ(e.target.value)} />
-            </div>
-            
-            <div className="form-group">
-              <label>Profundidade Corte (Z)</label>
-              <input type="number" step="0.1" value={cutDepth} onChange={e => setCutDepth(e.target.value)} />
-            </div>
+
+            <button className="create-button" onClick={handleCreateButton}> 
+                Gerar G-Code
+            </button>
+
           </div>
 
-          <button className="create-button" onClick={handleCreateButton}> 
-              Gerar código
-          </button>
-
-        </div>
-
-        {/* Coluna da Direita: Caixa de G-code */}
-        <div className="right-column"> {/* Adicionei uma classe aqui para facilitar o layout */}
-          <textarea
-            className="gcode-textarea"
-            value={gCode}
-            readOnly
-            placeholder="O código G-code gerado aparecerá aqui..."
-          />
-          
-          {gCode && (
-            <button className="export-button" onClick={handleExportGCode}>
-              Exportar Arquivo (.gcode)
-            </button>
-          )}
-        </div>
-      </main>
+          <div className="right-column">
+            <textarea
+              className="gcode-textarea"
+              value={gCode}
+              placeholder="O código G-code aparecerá aqui..."
+              readOnly
+            />
+            
+            {gCode && (
+              <button className="export-button" onClick={handleExportGCode}>
+                Baixar .gcode
+              </button>
+            )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

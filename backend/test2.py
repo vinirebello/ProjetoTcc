@@ -5,8 +5,7 @@ import uvicorn
 from pytesseract import Output
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.database import registerDatabase
-import math
+from app.db.database import registerDatabase, getFormattedItems, deleteItem
 
 app = FastAPI()
 
@@ -18,284 +17,230 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- CONFIGURAÇÕES ---
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-# =============================================================================
-# 1. FUNÇÕES AUXILIARES MATEMÁTICAS
-# =============================================================================
+def processImage(image_bytes: bytes):
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    if img is None:
+        return None,
+    
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0) 
 
-def calculate_distance(p1, p2):
-    return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+    _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-def get_line_midpoint(x1, y1, x2, y2):
-    return ((x1 + x2) // 2, (y1 + y2) // 2)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if not contours:
+        return None, "Nenhum contorno fechado detectado."
 
-# =============================================================================
-# 2. VISÃO COMPUTACIONAL (ASSOCIAÇÃO)
-# =============================================================================
+    largest_contour = max(contours, key=cv2.contourArea)
+    
+    epsilon = 0.01 * cv2.arcLength(largest_contour, True)
+    approx_polygon = cv2.approxPolyDP(largest_contour, epsilon, True)
 
-def associate_measurements_to_lines(image_bytes: bytes):
-    try:
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None: raise ValueError("Imagem inválida")
+    custom_config = r'--oem 3 --psm 11 -c tessedit_char_whitelist=0123456789'
+    d = pytesseract.image_to_data(gray, config=custom_config, output_type=Output.DICT)
+    
+    detected_values = []
+    for i in range(len(d['text'])):
+        text = d['text'][i].strip()
+        if text.isdigit():
+            val = int(text)
+            if val > 0:
+                detected_values.append(val)
+    
+    scale_factor = 1.0 
+    
+    if not detected_values:
+        print("AVISO: OCR falhou. Usando escala 1:1.")
+    else:
+        x_rect, y_rect, w_rect, h_rect = cv2.boundingRect(approx_polygon)
+        max_pixel_dimension = max(w_rect, h_rect)
+        max_real_dimension = max(detected_values)
         
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # Pré-processamento e Binarização
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        if max_real_dimension > 0:
+            scale_factor = max_pixel_dimension / max_real_dimension
 
-        # OCR
-        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
-        d = pytesseract.image_to_data(thresh, config=custom_config, output_type=Output.DICT)
+    points_px = approx_polygon.reshape(-1, 2) 
+    
+    min_x_px = np.min(points_px[:, 0])
+    max_y_px = np.max(points_px[:, 1]) 
+    
+    final_vertices = []
+    
+    for pt in points_px:
+     
+        vx = (pt[0] - min_x_px) / scale_factor
+    
+        vy = (max_y_px - pt[1]) / scale_factor
         
-        measurements = []
-        n_boxes = len(d['text'])
-        for i in range(n_boxes):
-            text = d['text'][i].strip()
-            if text.isdigit():
-                (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
-                measurements.append({
-                    'value': int(text),
-                    'box': (x, y, w, h),
-                    'center': (x + w // 2, y + h // 2),
-                    'associated_line': None
-                })
+        final_vertices.append({'x': vx, 'y': vy})
 
-        # Detecção de Linhas
-        edges = cv2.Canny(gray, 50, 150, apertureSize=3)
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=40, maxLineGap=10)
-        
-        detected_lines = []
-        if lines is not None:
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                detected_lines.append({
-                    'coords': (x1, y1, x2, y2),
-                    'midpoint': get_line_midpoint(x1, y1, x2, y2)
-                })
-
-        # Associação
-        results = []
-        for measure in measurements:
-            min_dist = float('inf')
-            best_line = None
-            tx, ty = measure['center']
-            
-            for line in detected_lines:
-                lx, ly = line['midpoint']
-                dist = calculate_distance((tx, ty), (lx, ly))
-                if dist < min_dist:
-                    min_dist = dist
-                    best_line = line
-            
-            if best_line:
-                measure['associated_line'] = best_line['coords']
-                measure['distance_to_line'] = min_dist
-                results.append(measure)
-
-        return results
-
-    except Exception as e:
-        print(f"Erro na visão computacional: {e}")
-        return []
-
-# =============================================================================
-# 3. GERAÇÃO DE G-CODE
-# =============================================================================
+    return final_vertices, None
 
 def generateGcode(vertices: list, params: dict):
-    """Gera a string final de G-code com base nos vértices processados."""
-    gcode_lines = []
+    lines = []
     
-    # Cabeçalho
-    gcode_lines.append(f"({params.get('fileName', 'output.nc')})")
-    gcode_lines.append(f"{params.get('units', 'G21')} ; Define unidades")
-    gcode_lines.append("G90 ; Coordenadas absolutas")
-    gcode_lines.append(f"M03 S{params.get('spindleSpeed', 1000)} ; Liga spindle")
-    gcode_lines.append(f"G00 Z{params.get('safetyZ', 5.0)} ; Move para Z de segurança")
+    filename = params.get('fileName', 'output.nc')
+    safe_z = params.get('safetyZ', 50.0)      
+    retract_z = 5.0                           
+    feed_cut = params.get('feedRate', 800.0)  
+    feed_plunge = feed_cut * 0.3              
+    spindle = params.get('spindleSpeed', 1500)
     
-    if not vertices:
-        gcode_lines.append("(Nenhum vértice válido encontrado)")
-        return "\n".join(gcode_lines)
+    total_thickness = abs(params.get('thickness', 10.0))
+    step_down = abs(params.get('stepDown', 2.0))
+    
+    final_z = -(total_thickness + 0.5) 
+    
+    safe_entry_x = -20.0
+    safe_entry_y = -20.0
 
-    # Movimento inicial
-    first_point = vertices[0]
-    gcode_lines.append(f"G00 X{first_point['x']:.3f} Y{first_point['y']:.3f}")
+    lines.append(f"O1001 ({filename})")
+    lines.append("(GERADO AUTOMATICAMENTE - VERIFICAR D1 NO CONTROLADOR)")
+    lines.append(f"{params.get('units', 'G21')} ; Milimetros")
+    lines.append("G17 G40 G49 G80 G90 ; Config de Seguranca")
     
-    # Mergulho (Aqui usamos a espessura como profundidade negativa)
-    # Nota: O cutDepth deve ser negativo no G-Code para descer
-    depth = params.get('cutDepth', -1.0)
-    feed = float(params.get('feedRate', 100))
-    gcode_lines.append(f"G01 Z{depth} F{feed / 2}")
+    lines.append("T1 M6 ; Troca Ferramenta 1")
+    lines.append("G54 ; Offset de Trabalho")
+    lines.append(f"S{spindle} M3 ; Liga Spindle")
+    lines.append("M8 ; Liga Refrigerante")
     
-    # Loop de Corte
-    for point in vertices[1:]:
-        gcode_lines.append(f"G01 X{point['x']:.3f} Y{point['y']:.3f} F{feed}")
+    lines.append(f"G00 X{safe_entry_x:.3f} Y{safe_entry_y:.3f} ; Ponto de espera seguro")
+    lines.append(f"G43 H1 Z{safe_z} ; Compensa Altura")
+    lines.append(f"G00 Z{retract_z} ; Desce rapido para perto da peca")
+
+    current_z = 0.0
+    
+    while current_z > final_z:
+        current_z -= step_down
+        if current_z < final_z:
+            current_z = final_z
+            
+        lines.append(f"; --- Passada Z = {current_z:.2f} ---")
         
-    # Fechar o contorno (retorna ao primeiro ponto)
-    gcode_lines.append(f"G01 X{first_point['x']:.3f} Y{first_point['y']:.3f}")
-    
-    # Finalização
-    gcode_lines.append(f"G00 Z{params.get('safetyZ', 5.0)} ; Retrai ferramenta")
-    gcode_lines.append("M05 ; Desliga spindle")
-    gcode_lines.append("M30 ; Fim do programa")
-    
-    return '\n'.join(gcode_lines)
-
-# =============================================================================
-# 4. ORQUESTRADOR (INTEGRAÇÃO)
-# =============================================================================
-
-def process_part_to_gcode(image_bytes: bytes, form_data: dict):
-    """
-    Função principal que recebe a imagem e os dados do formulário (React/Frontend),
-    processa a imagem, converte escalas e gera o G-Code.
-    """
-    
-    # 1. Executa a Visão Computacional
-    extracted_data = associate_measurements_to_lines(image_bytes)
-    
-    if not extracted_data:
-        return "Erro: Nenhuma cota ou linha detectada. Verifique a qualidade da imagem."
-
-    # 2. Calcula o Fator de Escala (Pixels -> mm)
-    # O OCR nos dá o valor real (ex: 100mm). A linha tem comprimento em pixels (ex: 500px).
-    # Fator = pixels / valor_real.
-    scale_factors = []
-    
-    print("\n--- Analisando Escalas ---")
-    for item in extracted_data:
-        x1, y1, x2, y2 = item['associated_line']
-        pixel_length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-        real_value = item['value'] # Valor lido pelo OCR
+        lines.append(f"G00 X{safe_entry_x:.3f} Y{safe_entry_y:.3f}")
         
-        if real_value > 0:
-            ratio = pixel_length / real_value
-            scale_factors.append(ratio)
-            print(f"Cota: {real_value} | Pixels: {pixel_length:.2f} | Ratio: {ratio:.2f} px/unidade")
-
-    # Média dos fatores para ter uma escala global mais precisa
-    if not scale_factors:
-        return "Erro: Não foi possível determinar a escala da imagem."
-    
-    global_scale = sum(scale_factors) / len(scale_factors)
-    print(f"Escala Global Usada: {global_scale:.4f} pixels por unidade")
-
-    # 3. Converte Coordenadas e Cria Vértices
-    # IMPORTANTE: O gerador de G-Code espera uma lista ordenada de vértices.
-    # O OCR retorna linhas soltas. Aqui vamos simplificar e pegar os pontos das linhas detectadas.
-    vertices = []
-    
-    # Offset para zerar a peça (trazer para o 0,0)
-    # Pegamos o menor X e Y detectados
-    min_x = float('inf')
-    min_y = float('inf')
-    
-    temp_points = []
-    for item in extracted_data:
-        coords = item['associated_line'] # (x1, y1, x2, y2)
-        temp_points.append((coords[0], coords[1]))
-        temp_points.append((coords[2], coords[3]))
+        lines.append(f"G01 Z{current_z:.3f} F{feed_plunge:.1f}")
         
-        min_x = min(min_x, coords[0], coords[2])
-        min_y = min(min_y, coords[1], coords[3])
+        start_pt = vertices[0]
+        lines.append(f"G01 G41 D1 X{start_pt['x']:.3f} Y{start_pt['y']:.3f} F{feed_cut:.1f}")
+        
+        for pt in vertices[1:]:
+            lines.append(f"G01 X{pt['x']:.3f} Y{pt['y']:.3f}")
+            
+        lines.append(f"G01 X{start_pt['x']:.3f} Y{start_pt['y']:.3f}")
+        
+        lines.append(f"G01 X{safe_entry_x:.3f} Y{safe_entry_y:.3f}")
+        lines.append("G40 ; Cancela compensacao")
+        
+        lines.append(f"G00 Z{retract_z} ; Retracao entre passes")
 
-    # Preenchendo os vértices convertidos e normalizados
-    # Nota: Em OpenCV o Y cresce para baixo, em CNC cresce para cima. 
-    # Muitas vezes é necessário inverter o Y, mas aqui manteremos o padrão da imagem.
-    for px, py in temp_points:
-        vertex = {
-            'x': (px - min_x) / global_scale, # Converte para mm e zera eixo
-            'y': (py - min_y) / global_scale  # Converte para mm e zera eixo
-        }
-        # Evita duplicar pontos muito próximos (opcional, mas bom para limpeza)
-        vertices.append(vertex)
+    lines.append("M9 ; Desliga Refrigerante")
+    lines.append("M5 ; Desliga Spindle")
+    lines.append(f"G00 Z{safe_z} ; Sobe Z total")
+    lines.append("G91 G28 Z0. ; Home Z")
+    lines.append("G28 X0. Y0. ; Home Mesa")
+    lines.append("M30 ; Fim")
+    
+    return '\n'.join(lines)
 
-    # 4. Prepara Parâmetros para o Gerador
-    # A espessura vem do formulário do front
-    thickness = float(form_data.get('thickness', 0)) 
+def processToGcode(image_bytes: bytes, form_data: dict):
+    vertices, error = processImage(image_bytes)
+    
+    if error:
+        return f"Erro: {error}"
     
     gcode_params = {
-        'fileName': form_data.get('filename', 'peca_output.nc'),
-        'units': 'G21', # mm
-        'spindleSpeed': form_data.get('spindle', 1200),
-        'safetyZ': 5.0,
-        'cutDepth': -abs(thickness), # Garante que seja negativo para cortar
-        'feedRate': form_data.get('feedrate', 300)
+        'fileName': form_data.get('filename', 'peca.nc'),
+        'units': form_data.get('units', 'G21'),
+        'spindleSpeed': int(form_data.get('spindleSpeed', 1500)),
+        'safetyZ': float(form_data.get('safetyZ', 50.0)),
+        'feedRate': float(form_data.get('feedRate', 800)),
+        
+        'thickness': float(form_data.get('thickness', 10.0)),   
+        'stepDown': float(form_data.get('stepDown', 2.0)) 
     }
 
-    # 5. Gera o arquivo final
     result_gcode = generateGcode(vertices, gcode_params)
-    
     return result_gcode
-
 
 @app.post("/api/generate-gcode")
 async def create_gcode(
-    
     file: UploadFile = File(...), 
-    units: str = Form(...),
-    spindleSpeed: int = Form(...),
-    feedRate: float = Form(...),
-    safetyZ: float = Form(...),
-    cutDepth: float = Form(...)):
+    units: str = Form("G21"),
+    spindleSpeed: int = Form(1500),
+    feedRate: float = Form(800),
+    safetyZ: float = Form(50),
+    thickness: float = Form(10.0), 
+    stepDown: float = Form(2.0)     
+):
     
     image_bytes = await file.read()
-
-    params = {
-        "fileName": file.filename,
+    
+    params_form = {
+        "filename": file.filename,
         "units": units,
         "spindleSpeed": spindleSpeed,
         "feedRate": feedRate,
         "safetyZ": safetyZ,
-        "cutDepth": cutDepth
+        "thickness": thickness,
+        "stepDown": stepDown
     }
 
-    gCode = process_part_to_gcode(image_bytes, params)
-
-    # gcode_result = generateGcode(vertices, params)
+    gCode = processToGcode(image_bytes, params_form)
     
-    registerDatabase(params, gCode)
+    registerDatabase(params_form, gCode)
     
     return gCode
 
+@app.get("/api/history")
+def get_history():
+    """Retorna a lista formatada para a sidebar"""
+    history = getFormattedItems(limit=20)
+    return history
+
+# ROTA 3: Deletar Histórico (Opcional, mas útil)
+@app.delete("/api/history/{item_id}")
+def delete_history(item_id: str):
+    success = deleteItem(item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    return {"message": "Item deletado com sucesso"}
+
 @app.get("/api/healthcheck", tags=["Health"])
 def health_check():
-    """Endpoint simples para verificar se a API está rodando."""
-    # Rota de health check simples que retorna apenas a confirmação.
-    return "API Ativa!"
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
-
-# =============================================================================
-# 5. EXEMPLO DE USO (SIMULAÇÃO DO BACKEND)
-# =============================================================================
+    return "API Ativa com Lógica CNC Avançada!"
 
 # if __name__ == "__main__":
-#     # Simulação dos dados que viriam do seu Frontend (React/Flask request)
-#     mock_form_data = {
-#         'thickness': 15.0,   # <--- ESPESSURA DA PEÇA AQUI
-#         'feedrate': 400,
-#         'spindle': 1500,
-#         'filename': 'teste_tcc.nc'
-#     }
+#     uvicorn.run(app, host="127.0.0.1", port=8000)
+    
+if __name__ == "__main__":
+    
+    mock_form_data = {
+        'thickness': 2,   # <--- ESPESSURA DA PEÇA AQUI
+        'feedrate': 400,
+        'spindle': 1500,
+        'filename': 'teste_tcc.nc'
+    }
 
-#     try:
-#         # Carrega uma imagem de teste
-#         with open("imagetest.png", "rb") as f:
-#             image_bytes = f.read()
+    try:
+        # Carrega uma imagem de teste
+        with open("image2.png", "rb") as f:
+            image_bytes = f.read()
         
-#         # Chama a função orquestradora
-#         gcode = process_part_to_gcode(image_bytes, mock_form_data)
+        # Chama a função orquestradora
+        gcode = processToGcode(image_bytes, mock_form_data)
         
-#         print("\n--- G-CODE GERADO ---\n")
-#         print(gcode)
+        print("\n--- G-CODE GERADO ---\n")
+        print(gcode)
         
-#         # Salva em arquivo
-#         with open("output_final.nc", "w") as f:
-#             f.write(gcode)
+        # Salva em arquivo
+        with open("output_final.nc", "w") as f:
+            f.write(gcode)
             
-#     except FileNotFoundError:
-#         print("Erro: Imagem de teste não encontrada.")
+    except FileNotFoundError:
+        print("Erro: Imagem de teste não encontrada.")
