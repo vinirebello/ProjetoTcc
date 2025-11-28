@@ -201,7 +201,7 @@ function App() {
               </div>
 
               <div className="form-group">
-                <label>Passo Z (Step Down)</label>
+                <label>Passo em Z (mm)</label>
                 <input 
                   type="number" 
                   step="0.1" 
