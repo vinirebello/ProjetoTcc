@@ -24,8 +24,8 @@ COPY . .
 
 # 4. Instala as bibliotecas do Python
 # O --no-cache-dir ajuda a economizar espaço, mas se falhar, o upgrade do pip ajuda
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# RUN pip install --upgrade pip && \
+#     pip install --no-cache-dir -r requirements.txt
 
 # 5. Comando para rodar seu app
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:10000"]
