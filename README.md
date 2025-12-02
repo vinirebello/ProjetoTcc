@@ -28,6 +28,26 @@ A aplicação pode ser visualizada acessando: https://projeto-tcc-phi.vercel.app
     * Unidades (mm/pol).
 * **Visualização e Exportação:** Preview do código G em tela e download direto do arquivo.
 
+## Requisitos Funcionais (RF):
+* RF001: O sistema deve permitir ao usuário carregar uma imagem 2D da peça (formatos comuns como PNG, JPEG).
+* RF002: O sistema deve permitir ao usuário definir um fator de escala na imagem (ex: por pixels/mm ou informando uma medida de referência).
+* RF003: O sistema deve detectar automaticamente bordas e contornos da peça na imagem.
+* RF004: O sistema deve identificar geometrias básicas como linhas, círculos e arcos a partir dos contornos detectados.
+* RF005: O sistema deve extrair as dimensões precisas (comprimento, largura, raio, diâmetro) das geometrias identificadas.
+* RF006: O sistema deve gerar o código G (g-code) para as operações de usinagem baseadas nas dimensões extraídas.
+* RF007: O sistema deve permitir ao usuário especificar parâmetros de usinagem (ex: profundidade de corte, velocidade de avanço, velocidade do spindle).
+* RF008: O sistema deve permitir ao usuário visualizar o g-code gerado antes da exportação.
+* RF009: O sistema deve permitir a exportação do g-code gerado para um arquivo de texto (.nc).
+* RF010: O sistema deve exibir mensagens de erro claras em caso de falha no processamento da imagem ou geração do g-code.
+
+## Requisitos Não-Funcionais (RNF):
+* RNF001: O processamento da imagem e a geração do g-code devem ser concluídos em no máximo 5 segundos para imagens de tamanho médio (ex: 1920x1080 pixels).
+* RNF002): A interface do usuário deve ser intuitiva e fácil de usar, mesmo para usuários com pouca experiência em visão computacional ou programação CNC.
+* RNF003: O g-code gerado deve ser sintaticamente correto e compatível com as máquinas CNC padrão.
+* RNF004): O software deve ser executável em sistemas operacionais Windows e Linux.
+* RNF005): O código-fonte deve ser bem documentado e modular, facilitando futuras extensões e correções.
+* RNF006): O sistema não deve exigir privilégios elevados para sua execução e não deve manipular dados sensíveis
+
 ---
 
 ## Arquitetura e Tecnologias
