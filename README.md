@@ -1,6 +1,7 @@
 # G-Code Generator: Visão Computacional para CNC
 
 > **Projeto de Trabalho de Conclusão de Curso**
+
 > **Curso:** Engenharia de Software
 
 Este projeto consiste em uma aplicação web Fullstack desenvolvida para automatizar a criação de rotas de usinagem (G-Code) para fresadoras verticais CNC. O sistema processa imagens de desenhos 2D simples, detecta a geometria da peça e suas dimensões reais, e gera o código de máquina pronto para execução.
@@ -12,7 +13,7 @@ A programação manual de máquinas CNC  pode ser trabalhosa e propensa a erros 
 
 O diferencial técnico é o uso de **Visão Computacional** para extrair o contorno da peça e **OCR (Reconhecimento Óptico de Caracteres)** para ler as cotas da imagem e calcular a escala automaticamente, sem necessidade de informar as dimensões manualmente.
 
----
+A aplicação pode ser visualizada acessando: https://projeto-tcc-phi.vercel.app 
 
 ## 🚀 Funcionalidades
 
