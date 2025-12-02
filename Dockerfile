@@ -37,7 +37,7 @@ COPY backend/ .
 # 6. Comando para rodar
 # ATENÇÃO: Verifique onde está seu arquivo principal.
 # Se seu arquivo principal (ex: app.py ou main.py) estiver solto dentro da pasta 'backend', use:
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:10000"]
+CMD ["gunicorn", "api.api:app", "--bind", "0.0.0.0:10000"]
 
 # Se o arquivo principal estiver dentro da pasta 'api' (ex: backend/api/app.py), use:
 # CMD ["gunicorn", "api.app:app", "--bind", "0.0.0.0:10000"]
