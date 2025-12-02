@@ -1,4 +1,4 @@
-# G-Code Generator: Visão Computacional para CNC
+# Gerador automático de G-code
 
 > **Projeto de Trabalho de Conclusão de Curso**
 
@@ -9,13 +9,13 @@ Este projeto consiste em uma aplicação web Fullstack desenvolvida para automat
 
 ## Sobre o Projeto
 
-A programação manual de máquinas CNC  pode ser trabalhosa e propensa a erros humanos. Este software visa simplificar esse processo para geometrias 2D, permitindo que o operador faça o upload de um desenho (foto ou scan), configure os parâmetros de corte e receba o arquivo `.gcode` instantaneamente. O projeto visa simplificar o entendimento inicial quando se esta começando a aprender códigos CNC, mantendo uma interface mais amigável, sem necessidade de desenhos altamente técnicos, sendo um uso simples e prático.
+A programação manual de máquinas CNC  pode ser trabalhosa e propensa a erros humanos. Este software visa simplificar esse processo para geometrias 2D, permitindo que o operador faça o upload de um desenho (foto ou arquivos de imagem), configure os parâmetros de corte e receba o arquivo `.gcode` instantaneamente. O projeto visa simplificar o entendimento inicial quando se esta começando a aprender códigos CNC, mantendo uma interface mais amigável, sem necessidade de desenhos altamente técnicos, sendo um uso simples e prático.
 
 O diferencial técnico é o uso de **Visão Computacional** para extrair o contorno da peça e **OCR (Reconhecimento Óptico de Caracteres)** para ler as cotas da imagem e calcular a escala automaticamente, sem necessidade de informar as dimensões manualmente.
 
 A aplicação pode ser visualizada acessando: https://projeto-tcc-phi.vercel.app 
 
-## 🚀 Funcionalidades
+## Funcionalidades
 
 * **Processamento de Imagem:** Upload de arquivos `.png`, `.jpg` ou `.jpeg`.
 * **Detecção Automática de Geometria:** Identificação de perfis fechados e contornos da peça.
@@ -30,7 +30,7 @@ A aplicação pode ser visualizada acessando: https://projeto-tcc-phi.vercel.app
 
 ---
 
-## 🛠️ Arquitetura e Tecnologias
+## Arquitetura e Tecnologias
 
 O sistema foi desenvolvido utilizando uma arquitetura de microsserviços simples, separando o cliente (Frontend) do servidor de processamento (Backend).
 
@@ -51,12 +51,12 @@ O sistema foi desenvolvido utilizando uma arquitetura de microsserviços simples
 
 ---
 
-## ⚙️ Pré-requisitos
+## Pré-requisitos
 
 Para executar o projeto, você precisará das seguintes ferramentas instaladas:
 
 1.  **Node.js** e **npm** (Gerenciador de pacotes do Node).
-2.  **Python 3.8+** (Certifique-se de adicionar ao PATH).
+2.  **Python 3.9+**
 3.  **MongoDB Community Server** (Rodando localmente ou via Docker).
 4.  **Tesseract OCR (Essencial):**
     * O Python precisa do executável do Tesseract instalado no sistema operacional.
@@ -78,14 +78,16 @@ cd backend
 # (Opcional) Crie um ambiente virtual
 python -m venv venv
 
-# Ative o ambiente virtual
-# No Windows:
-venv\Scripts\activate
-# No Linux/Mac:
-source venv/bin/activate
-
 # Instale as dependências
 pip install fastapi uvicorn opencv-python pytesseract numpy pymongo python-multipart
 
 # Inicie o servidor
 uvicorn api:app --reload
+
+# Para a aplicação React, va para a pasta do frontend
+cd frontend/gcode_generator
+
+#Inicie o app React
+npm start
+
+
