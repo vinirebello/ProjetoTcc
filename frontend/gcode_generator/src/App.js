@@ -17,7 +17,7 @@ function App() {
 
   const fetchHistory = async () => {
     try {
-      const response = await fetch('https://gcode-generator.onrender.com/api/history');
+      const response = await fetch('https://projetotcc-0rhr.onrender.com/api/history');
       if (response.ok) {
         const data = await response.json();
         setHistoryList(data);
@@ -49,7 +49,7 @@ function App() {
     if(!window.confirm("Deseja deletar este registro?")) return;
 
     try {
-        await fetch(`https://gcode-generator.onrender.com/api/history/${id}`, { method: 'DELETE' });
+        await fetch(`https://projetotcc-0rhr.onrender.com/api/history/${id}`, { method: 'DELETE' });
         fetchHistory(); 
     } catch (error) {
         console.error("Erro ao deletar", error);
@@ -74,7 +74,7 @@ function App() {
     setGCode("Processando imagem");
 
     try {
-      const response = await fetch('https://gcode-generator.onrender.com/api/generate-gcode', {
+      const response = await fetch('https://projetotcc-0rhr.onrender.com/api/generate-gcode', {
         method: 'POST',
         body: formData,
       });
