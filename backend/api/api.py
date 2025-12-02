@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import pytesseract
 import uvicorn
+import os
 from pytesseract import Output
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,15 +10,23 @@ from db.database import registerDatabase, getFormattedItems, deleteItem
 
 app = FastAPI()
 
+origins = [
+    "http://localhost:3000",
+    "https://projeto-tcc-phi.vercel.app"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], 
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+if os.name == 'nt':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+else:
+    pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract' 
 
 def processImage(image_bytes: bytes):
     nparr = np.frombuffer(image_bytes, np.uint8)
@@ -201,11 +210,9 @@ async def create_gcode(
 
 @app.get("/api/history")
 def get_history():
-    """Retorna a lista formatada para a sidebar"""
     history = getFormattedItems(limit=20)
     return history
 
-# ROTA 3: Deletar Histórico (Opcional, mas útil)
 @app.delete("/api/history/{item_id}")
 def delete_history(item_id: str):
     success = deleteItem(item_id)
@@ -220,29 +227,27 @@ def health_check():
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
     
-if __name__ == "__main__":
+# if __name__ == "__main__":
     
-    mock_form_data = {
-        'thickness': 2, 
-        'feedrate': 400,
-        'spindle': 1500,
-        'filename': 'teste_tcc.nc'
-    }
+#     mock_form_data = {
+#         'thickness': 2, 
+#         'feedrate': 400,
+#         'spindle': 1500,
+#         'filename': 'teste_tcc.nc'
+#     }
 
-    try:
-        # Carrega uma imagem de teste
-        with open("../uploads/image1.png", "rb") as f:
-            image_bytes = f.read()
+#     try:
         
-        # Chama a função orquestradora
-        gcode = processToGcode(image_bytes, mock_form_data)
+#         with open("../uploads/image1.png", "rb") as f:
+#             image_bytes = f.read()
         
-        print("\n--- G-CODE GERADO ---\n")
-        print(gcode)
+#         gcode = processToGcode(image_bytes, mock_form_data)
         
-        # Salva em arquivo
-        with open("output_final.nc", "w") as f:
-            f.write(gcode)
+#         print("\n--- G-CODE GERADO ---\n")
+#         print(gcode)
+        
+#         with open("output_final.nc", "w") as f:
+#             f.write(gcode)
             
-    except FileNotFoundError:
-        print("Erro: Imagem de teste não encontrada.")
+#     except FileNotFoundError:
+#         print("Erro: Imagem de teste não encontrada.")

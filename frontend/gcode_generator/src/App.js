@@ -5,20 +5,16 @@ function App() {
 
   const [gCode, setGCode] = useState('');
   const [selectedFile, setSelectedFile] = useState(null)
-  
-  // Estados do Formulário
   const [spindleSpeed, setSpindleSpeed] = useState(1200); 
   const [feedRate, setFeedRate] = useState(500); 
   const [safetyZ, setSafetyZ] = useState(5.0); 
-  const [thickness, setThickness] = useState(10.0); // Ajustei padrão para positivo para facilitar
+  const [thickness, setThickness] = useState(10.0);
   const [stepDown, setStepDown] = useState(2.0); 
   
-  // Novo Estado para o Histórico
   const [historyList, setHistoryList] = useState([]);
   
   const fileInputRef = useRef(null);
 
-  // --- 1. Buscar Histórico ao Iniciar ---
   const fetchHistory = async () => {
     try {
       const response = await fetch('https://gcode-generator.onrender.com/api/history');
@@ -75,7 +71,7 @@ function App() {
     formData.append('thickness', thickness);
     formData.append('stepDown', stepDown)
 
-    setGCode("(Processando imagem e salvando no banco...)");
+    setGCode("Processando imagem");
 
     try {
       const response = await fetch('https://gcode-generator.onrender.com/api/generate-gcode', {

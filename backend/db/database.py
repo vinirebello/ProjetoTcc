@@ -38,7 +38,7 @@ def registerDatabase(initialParams: dict, gcodeResult: str):
         print("Erro ao inserir dados no banco")
     
 def update_drawing_status(file_id, new_status, gcode_path=None):
-    """Atualiza o status e, opcionalmente, o caminho do G-code de um registro."""
+
     db = connect_db()
     if db is not None:
         collection = db.get_collection(COLLECTION_NAME)
@@ -58,29 +58,23 @@ def update_drawing_status(file_id, new_status, gcode_path=None):
             print(f"Nenhum registro encontrado com o ID {file_id}.")
             
 def getFormattedItems(limit=20):
-    """
-    Busca os últimos registros formatados para o Frontend.
-    Trata erros caso o campo de data não exista.
-    """
+
     db = connect_db()
     if db is not None:
         collection = db.get_collection(COLLECTION_NAME)
         
-        # Busca ordenando por _id (o _id contém a data de criação embutida, então funciona sempre)
         cursor = collection.find({}).sort("_id", DESCENDING).limit(limit)
         
         history_list = []
         for doc in cursor:
-            # Tenta pegar 'upload_date', se não tiver tenta 'timestamp', se não tiver usa data atual
+
             date_obj = doc.get("upload_date") or doc.get("timestamp")
             
-            # Formatação segura da data
             if isinstance(date_obj, datetime):
                 formatted_date = date_obj.strftime("%d/%m/%Y %H:%M")
             else:
                 formatted_date = "Data Desconhecida"
 
-            # Tratamento seguro para params (caso seja antigo e não tenha)
             params = doc.get("params", {})
 
             history_list.append({
@@ -94,7 +88,6 @@ def getFormattedItems(limit=20):
     return []
 
 def deleteItem(file_id: str):
-    """Remove um item do histórico pelo ID."""
     db = connect_db()
     if db is not None:
         collection = db.get_collection(COLLECTION_NAME)
